@@ -4,6 +4,8 @@ This is an addon ability for the [ProjectKorra](https://projectkorra.com/) plugi
 ability allows players to summon friendly spirits that provide light and assistance. This concept was designed by
 LuxaelNi.
 
+https://github.com/user-attachments/assets/e21559eb-ca2e-48b1-bc52-4e5c203e6b33
+
 ## Description
 
 **Guidance** is a Spiritual ability that enables players to summon a 'Spirit Buddy' while in darkness. This friendly
@@ -47,33 +49,33 @@ ExtraAbilities:
       DisplayParticles: true
       EntityLightLevel: 15
       EntityNames:
-        - "&aSpirit Buddy"
-        - "&aFriendly Spirit"
-      FollowDistance: 3
-      InspectRange: 48
+      - '&aSpirit Buddy'
+      - '&aFriendly Spirit'
+      FollowDistance: 4
+      InspectRange: 64
       PlaySounds: true
       RemovesBlindness: true
       Language:
-        ToggledOn: "&aSpirits are now following you"
-        ToggledOff: "&cSpirits are no longer following you"
+        ToggledOn: '&aFriendly spirits are now following you'
+        ToggledOff: '&cFriendly spirits are no longer following you'
       EntityTypes:
         Adult:
-          - "allay"
-          - "bat"
-          - "cat"
-          - "chicken"
-          - "frog"
-          - "ocelot"
-          - "parrot"
-          - "rabbit"
-          - "bee"
-          - "fox"
-          - "wolf"
+        - allay
+        - bat
+        - cat
+        - chicken
+        - frog
+        - ocelot
+        - parrot
+        - rabbit
+        - bee
+        - fox
+        - wolf
         Baby:
-          - "panda"
-          - "polarBear"
-          - "sniffer"
-          - "goat"
+        - panda
+        - polar_bear
+        - sniffer
+        - goat
 ```
 
 ## Development
