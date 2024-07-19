@@ -113,4 +113,4 @@ the spirits, their names, and the light levels they provide.
 ## Setup Entities
 
 The ability supports a variety of entity types for the spirits, which can be customized in the configuration file. The
-default setup includes a mix of adult and baby entities, ensuring a diverse range of spirits.
+default setup includes a mix of adult and baby entities, ensuring a diverse range of spirits. You can find a full list of entity types available [here](https://hub.spigotmc.org/javadocs/spigot/org/bukkit/entity/EntityType.html) but note only [LivingEntity](https://hub.spigotmc.org/javadocs/spigot/org/bukkit/entity/LivingEntity.html) types are allowed. There may be some issues with specific hostile mobs, so add them at your own risk!
