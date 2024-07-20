@@ -6,9 +6,7 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.event.AbilityDamageEntityEvent;
-import com.projectkorra.projectkorra.event.AbilityVelocityAffectEntityEvent;
-import com.projectkorra.projectkorra.event.BendingReloadEvent;
+import com.projectkorra.projectkorra.event.*;
 import com.projectkorra.projectkorra.util.ParticleEffect;
 
 import org.bukkit.Bukkit;
@@ -18,21 +16,25 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Warden;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockReceiveGameEvent;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.event.world.GenericGameEvent;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class GuidanceListener implements Listener {
+
+    private static final List<UUID> recentlyDropped = new ArrayList<>();
 
     @EventHandler
     public void onEvent(GenericGameEvent event) {
         if (event.getEntity() == null) return;
         if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (event.getEntity() instanceof Warden) {
-            Warden warden = (Warden) event.getEntity();
+        if (event.getEntity() instanceof Warden warden) {
             if (warden.getEntityAngryAt() == null) return;
             LivingEntity entity = warden.getEntityAngryAt();
             if (Guidance.getSpirits().containsValue(entity)) {
@@ -74,8 +76,7 @@ public class GuidanceListener implements Listener {
     public void onDeath(EntityDeathEvent event) {
         if (Guidance.getSpirits().containsValue(event.getEntity())) {
             for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
-                if (!(ability instanceof Guidance)) continue;
-                Guidance guidance = (Guidance) ability;
+                if (!(ability instanceof Guidance guidance)) continue;
                 if (guidance.getEntity().getUniqueId().equals(event.getEntity().getUniqueId())) {
                     guidance.remove();
                     break;
@@ -173,14 +174,71 @@ public class GuidanceListener implements Listener {
     }
 
     @EventHandler
-    public void onClick(PlayerAnimationEvent event) {
-        if (event.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
+    public void onChange(PlayerChangeElementEvent event) {
+        Player player = event.getTarget();
 
-        Player player = event.getPlayer();
+        if (!player.isOnline() || player.isDead()) return;
+
+        UUID uuid = player.getUniqueId();
         BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
 
-        if (event.isCancelled() || bPlayer == null || !bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance"))
-            return;
+        if (!bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+            for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
+                if (ability.getName().equalsIgnoreCase("Guidance") && ability.getPlayer().getUniqueId().equals(uuid)) {
+                    Guidance guidance = (Guidance) ability;
+                    guidance.remove();
+                }
+            }
+        }
+
+        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
+            if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+                new Guidance(player);
+            }
+        }, 5L);
+    }
+
+    @EventHandler
+    public void onChange(PlayerChangeSubElementEvent event) {
+        Player player = event.getTarget();
+
+        if (!player.isOnline() || player.isDead()) return;
+
+        UUID uuid = player.getUniqueId();
+        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+
+        if (!bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+            for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
+                if (ability.getName().equalsIgnoreCase("Guidance") && ability.getPlayer().getUniqueId().equals(uuid)) {
+                    Guidance guidance = (Guidance) ability;
+                    guidance.remove();
+                }
+            }
+        }
+
+        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
+            if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+                new Guidance(player);
+            }
+        }, 5L);
+    }
+
+    @EventHandler
+    public void PlayerDropItemEvent(PlayerDropItemEvent event) {
+        recentlyDropped.add(event.getPlayer().getUniqueId());
+        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> recentlyDropped.remove(event.getPlayer().getUniqueId()), 2L);
+    }
+
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+
+        if (recentlyDropped.contains(player.getUniqueId())) return;
+        if (event.getAction() != Action.LEFT_CLICK_AIR && event.getAction() != Action.LEFT_CLICK_BLOCK) return;
+
+        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+
+        if (bPlayer == null || !bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance")) return;
 
         boolean foundGuidance = false;
 
@@ -203,13 +261,14 @@ public class GuidanceListener implements Listener {
             new Guidance(player);
             Guidance.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn"));
         }
+
+        event.setCancelled(true);
     }
 
     @EventHandler
     public void onInteract(PlayerInteractEntityEvent event) {
-        if (!(event.getRightClicked() instanceof LivingEntity)) return;
+        if (!(event.getRightClicked() instanceof LivingEntity clickedEntity)) return;
 
-        LivingEntity clickedEntity = (LivingEntity) event.getRightClicked();
         Player player = event.getPlayer();
 
         if (!Guidance.getSpirits().containsValue(clickedEntity)) return;

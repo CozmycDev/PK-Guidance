@@ -193,11 +193,10 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     private void cureBlindness() {
         if (!this.removesBlindness) return;
         for (Entity entity : GeneralMethods.getEntitiesAroundPoint(this.getEntity().getLocation(), 5)) {
-            if (entity instanceof Player) {
-                Player player = (Player) entity;
-                if (player.hasPotionEffect(PotionEffectType.DARKNESS) || player.hasPotionEffect(PotionEffectType.BLINDNESS)) {
-                    player.removePotionEffect(PotionEffectType.DARKNESS);
-                    player.removePotionEffect(PotionEffectType.BLINDNESS);
+            if (entity instanceof Player p) {
+                if (p.hasPotionEffect(PotionEffectType.DARKNESS) || p.hasPotionEffect(PotionEffectType.BLINDNESS)) {
+                    p.removePotionEffect(PotionEffectType.DARKNESS);
+                    p.removePotionEffect(PotionEffectType.BLINDNESS);
                 }
             }
         }
@@ -385,42 +384,27 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             this.getEntity().getLocation().getWorld().playSound(this.getEntity().getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.65f);
     }
 
-    // we dont talk about this
     private void emitLight() {
         Block mainBlock = this.getEntity().getLocation().getBlock();
+        Location baseLocation = mainBlock.getLocation();
 
-        if (mainBlock.isEmpty()) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation(), entityLightLevel, 6L, Math.max(64, this.inspectRange));
-            return;
-        }
+        int[][] offsets = {
+                {0, 0, 0},
+                {0, 1, 0},
+                {0, 2, 0},
+                {1, 0, 0},
+                {0, 0, 1},
+                {-1, 0, 0},
+                {0, 0, -1}
+        };
 
-        if (mainBlock.getLocation().clone().add(0, 1, 0).getBlock().isEmpty() || mainBlock.getLocation().clone().add(0, 1, 0).getBlock().getType() == Material.WATER) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation().clone().add(0, 1, 0), entityLightLevel, 6L, Math.max(64, this.inspectRange));
-            return;
-        }
+        for (int[] offset : offsets) {
+            Location location = baseLocation.clone().add(offset[0], offset[1], offset[2]);
+            Block block = location.getBlock();
 
-        if (mainBlock.getLocation().clone().add(0, 2, 0).getBlock().isEmpty() || mainBlock.getLocation().clone().add(0, 2, 0).getBlock().getType() == Material.WATER) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation().clone().add(0, 2, 0), entityLightLevel, 6L, Math.max(64, this.inspectRange));
-            return;
-        }
-
-        if (mainBlock.getLocation().clone().add(1, 0, 0).getBlock().isEmpty() || mainBlock.getLocation().clone().add(1, 0, 0).getBlock().getType() == Material.WATER) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation().clone().add(1, 0, 0), entityLightLevel, 6L, Math.max(64, this.inspectRange));
-            return;
-        }
-
-        if (mainBlock.getLocation().clone().add(0, 0, 1).getBlock().isEmpty() || mainBlock.getLocation().clone().add(0, 0, 1).getBlock().getType() == Material.WATER) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation().clone().add(0, 0, 1), entityLightLevel, 6L, Math.max(64, this.inspectRange));
-            return;
-        }
-
-        if (mainBlock.getLocation().clone().add(-1, 0, 0).getBlock().isEmpty() || mainBlock.getLocation().clone().add(-1, 0, 0).getBlock().getType() == Material.WATER) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation().clone().add(-1, 0, 0), entityLightLevel, 6L, Math.max(64, this.inspectRange));
-            return;
-        }
-
-        if (mainBlock.getLocation().clone().add(0, 0, -1).getBlock().isEmpty() || mainBlock.getLocation().clone().add(0, 0, -1).getBlock().getType() == Material.WATER) {
-            LightManager.getInstance().addLight(ProjectKorra.plugin, mainBlock.getLocation().clone().add(0, 0, -1), entityLightLevel, 6L, Math.max(64, this.inspectRange));
+            if (block.isEmpty() || block.getType() == Material.WATER) {
+                LightManager.getInstance().addLight(location, entityLightLevel, Math.max(64, this.inspectRange), 5L, null, null);
+            }
         }
     }
 
@@ -503,7 +487,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.0.5";
+        return "1.0.6";
     }
 
     @SuppressWarnings("unchecked")
