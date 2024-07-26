@@ -403,7 +403,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             Block block = location.getBlock();
 
             if (block.isEmpty() || block.getType() == Material.WATER) {
-                LightManager.getInstance().addLight(location, entityLightLevel, Math.max(64, this.inspectRange), 5L, null, null);
+                LightManager.get().addLight(location, entityLightLevel, 200L, null, null);
             }
         }
     }
@@ -487,7 +487,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.0.6";
+        return "1.0.7";
     }
 
     @SuppressWarnings("unchecked")
