@@ -145,7 +145,7 @@ public class GuidanceListener implements Listener {
 
     @EventHandler
     public void onReload(BendingReloadEvent event) {
-        LightManager.getInstance().removeAllLights();
+        LightManager.get().removeAllLights();
     }
 
     @EventHandler
