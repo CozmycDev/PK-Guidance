@@ -355,12 +355,12 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getInstructions() {
-        return "When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location.";
+        return ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.Instructions");
     }
 
     @Override
     public String getDescription() {
-        return "Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a 'Spirit Buddy' will spawn, following the player as a moving light source.";
+        return ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.Description");
     }
 
     @Override
@@ -403,7 +403,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             Block block = location.getBlock();
 
             if (block.isEmpty() || block.getType() == Material.WATER) {
-                LightManager.get().addLight(location, entityLightLevel, 200L, null, null);
+                LightManager.get().addLight(location, entityLightLevel, 350L, null, null);
             }
         }
     }
@@ -451,6 +451,8 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.PlaySounds", true);
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.RemovesBlindness", true);
 
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Description", "Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a 'Spirit Buddy' will spawn, following the player as a moving light source.");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Instructions", "When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location.");
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn", "&aFriendly spirits are now following you");
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff", "&cFriendly spirits are no longer following you");
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult", adultList);
@@ -464,7 +466,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         registerNoCollisionTeam();
 
-        ProjectKorra.plugin.getLogger().info("Loaded Guidance by LuxaelNI and Cozmyc!");
+        ProjectKorra.plugin.getLogger().info("Guidance by LuxaelNI and Cozmyc is now enabled!");
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!player.isOnline() || player.isDead()) continue;
@@ -477,7 +479,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public void stop() {
-        ProjectKorra.plugin.getLogger().info("Unloaded Guidance!");
+        ProjectKorra.plugin.getLogger().info("Guidance is now disabled!");
     }
 
     @Override
@@ -487,7 +489,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.0.7";
+        return "1.1.0";
     }
 
     @SuppressWarnings("unchecked")
@@ -540,8 +542,6 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         }
 
         noCollisionTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
-        noCollisionTeam.setColor(ChatColor.AQUA);
-        noCollisionTeam.setPrefix(ChatColor.AQUA + "spirit");
     }
 
     public AbilityState getState() {

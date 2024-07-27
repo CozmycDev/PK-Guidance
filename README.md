@@ -56,6 +56,8 @@ ExtraAbilities:
       PlaySounds: true
       RemovesBlindness: true
       Language:
+        Description: 'Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a Spirit Buddy will spawn, following the player as a moving light source.'
+        Instructions: 'When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location.'
         ToggledOn: '&aFriendly spirits are now following you'
         ToggledOff: '&cFriendly spirits are no longer following you'
       EntityTypes:

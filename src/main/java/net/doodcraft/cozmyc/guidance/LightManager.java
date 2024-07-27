@@ -1,6 +1,6 @@
 package net.doodcraft.cozmyc.guidance;
 
-import com.projectkorra.projectkorra.ProjectKorra;
+import com.projectkorra.projectkorra.GeneralMethods;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -8,11 +8,8 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Levelled;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.entity.Player;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,7 +18,9 @@ public class LightManager {
 
     private static final LightManager INSTANCE = new LightManager();
 
-    private final DelayQueue<LightData> lightQueue = new DelayQueue<>();
+    private static final boolean MODERN = GeneralMethods.getMCVersion() >= 1170;
+
+    private final Map<Location, LightData> lightMap = new ConcurrentHashMap<>();
     private ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors());
     private final BlockData defaultLightData;
     private final BlockData defaultWaterloggedLightData;
@@ -47,38 +46,57 @@ public class LightManager {
     }
 
     public void addLight(Location location, int brightness, long delay, UUID uuid, Boolean ephemeral) {
+        if (!MODERN) return;
+
         location = location.getBlock().getLocation();
         long expiryTime = System.currentTimeMillis() + delay;
 
         if (location.getBlock().getLightLevel() >= brightness || (!location.getBlock().isEmpty() && !location.getBlock().getType().equals(Material.WATER))) return;
 
         LightData newLightData = new LightData(location, brightness, uuid, ephemeral, expiryTime);
-
-        Location finalLocation = location;
-        lightQueue.removeIf(lightData -> lightData.location.equals(finalLocation));
-        lightQueue.add(newLightData);
+        lightMap.put(location, newLightData);
 
         sendLightChange(location, brightness, uuid, ephemeral);
     }
 
-    public void removeAllLights() {
-        lightQueue.forEach(this::revertLight);
-        lightQueue.clear();
-        scheduler.shutdownNow();
-        scheduler = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors());
-    }
-
     private void startLightReverter() {
+        if (scheduler.isShutdown()) {
+            scheduler = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors());
+        }
+
         scheduler.scheduleAtFixedRate(reverterTask, 0, 50, TimeUnit.MILLISECONDS);
     }
 
-    private void revertExpiredLights() {
-        List<LightData> expiredLights = new ArrayList<>();
-        LightData expiredLight;
-        while ((expiredLight = lightQueue.poll()) != null) {
-            expiredLights.add(expiredLight);
+    public void removeAllLights() {
+        if (!MODERN) return;
+
+        lightMap.values().forEach(this::revertLight);
+        lightMap.clear();
+        scheduler.shutdown();
+
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
         }
-        expiredLights.forEach(this::fadeLight);
+
+        startLightReverter();
+    }
+
+    private void revertExpiredLights() {
+        if (!MODERN) return;
+
+        long currentTime = System.currentTimeMillis();
+        lightMap.values().removeIf(lightData -> {
+            if (currentTime >= lightData.expiryTime) {
+                fadeLight(lightData);
+                return true;
+            }
+            return false;
+        });
     }
 
     private void fadeLight(LightData lightData) {
@@ -103,19 +121,20 @@ public class LightManager {
         BlockData lightData = brightness > 0 ? getLightData(location) : getCurrentBlockData(location);
         lightData = modifyLightLevel(lightData, brightness);
 
-        BlockData finalLightData = lightData;
-        Bukkit.getScheduler().runTaskAsynchronously(ProjectKorra.plugin, () -> {
-            if (ephemeral != null && ephemeral) {
-                Player player = Bukkit.getPlayer(uuid);
-                if (player != null) {
-                    player.sendBlockChange(location, finalLightData);
-                }
-            } else {
-                for (Player player : Bukkit.getOnlinePlayers()) {
-                    player.sendBlockChange(location, finalLightData);
+        int viewDistance = Bukkit.getServer().getViewDistance();
+
+        if (ephemeral != null && ephemeral) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null && player.getWorld().equals(location.getWorld()) && player.getLocation().distance(location) <= viewDistance * 16) {
+                player.sendBlockChange(location, lightData);
+            }
+        } else {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.getWorld().equals(location.getWorld()) && player.getLocation().distance(location) <= viewDistance * 16) {
+                    player.sendBlockChange(location, lightData);
                 }
             }
-        });
+        }
     }
 
     private BlockData getLightData(Location location) {
@@ -139,7 +158,7 @@ public class LightManager {
         sendLightChange(lightData.location, 0, lightData.uuid, lightData.ephemeral);
     }
 
-    private static class LightData implements Delayed {
+    private static class LightData {
         final Location location;
         final int brightness;
         final UUID uuid;
@@ -152,16 +171,6 @@ public class LightManager {
             this.uuid = uuid;
             this.ephemeral = ephemeral;
             this.expiryTime = expiryTime;
-        }
-
-        @Override
-        public long getDelay(TimeUnit unit) {
-            return unit.convert(expiryTime - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
-        }
-
-        @Override
-        public int compareTo(@NotNull Delayed o) {
-            return Long.compare(this.expiryTime, ((LightData) o).expiryTime);
         }
     }
 }
