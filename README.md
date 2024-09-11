@@ -1,3 +1,7 @@
+[![GitHub Pre-Release](https://img.shields.io/github/release-pre/CozmycDev/PK-Guidance.svg)](https://github.com/CozmycDev/PK-Guidance/releases)
+[![Github All Releases](https://img.shields.io/github/downloads/CozmycDev/PK-Guidance/total.svg)](https://github.com/CozmycDev/PK-Guidance/releases)
+![Size](https://img.shields.io/github/repo-size/CozmycDev/PK-Guidance.svg)
+
 # Guidance Ability for ProjectKorra
 
 This is an addon ability for the [ProjectKorra](https://projectkorra.com/) plugin for Spigot Minecraft servers. This
