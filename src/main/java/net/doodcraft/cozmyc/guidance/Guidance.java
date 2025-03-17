@@ -485,6 +485,8 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult", adultList);
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Baby", babyList);
 
+        ConfigManager.defaultConfig.save();
+
         if (!setupEntities()) {
             ProjectKorra.plugin.getLogger().info("There was an error setting up entity types, please check 'ExtraAbilities.Cozmyc.Guidance.EntityTypes` in ProjectKorra's config.yml.");
             this.stop();
@@ -510,7 +512,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.2.1";
+        return "1.2.2";
     }
 
     @SuppressWarnings("unchecked")
