@@ -36,6 +36,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     public static int guidanceTaskId = -1;
 
     public static final HashMap<UUID, AbilityState> trackedStates = new HashMap<>();
+    public static final HashMap<UUID, Class<? extends LivingEntity>> lastEntity = new HashMap<>();
 
     private static final Pattern colorPattern = Pattern.compile("#[a-fA-F0-9]{6}");
     private static final Map<UUID, LivingEntity> SPIRITS = new ConcurrentHashMap<>();
@@ -177,16 +178,24 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             spawnLocation = cursor;
         }
 
-        List<Class<? extends LivingEntity>> combinedList = new ArrayList<>(adultSpiritClasses);
-        combinedList.addAll(babySpiritClasses);
-
-        Class<? extends LivingEntity> entityClass = combinedList.get(ThreadLocalRandom.current().nextInt(combinedList.size()));
+        Class<? extends LivingEntity> entityClass;
+        if (!lastEntity.containsKey(player.getUniqueId())) {
+            List<Class<? extends LivingEntity>> combinedList = new ArrayList<>(adultSpiritClasses);
+            combinedList.addAll(babySpiritClasses);
+            entityClass = combinedList.get(ThreadLocalRandom.current().nextInt(combinedList.size()));
+        } else {
+            entityClass = lastEntity.get(player.getUniqueId());  // repeat last entity type for this player
+        }
 
         if (spawnLocation.getWorld() == null) return;
+
         LivingEntity entity = spawnLocation.getWorld().spawn(spawnLocation, entityClass);
+
         setupSpirit(entity);
         SPIRITS.put(player.getUniqueId(), entity);
+        lastEntity.put(player.getUniqueId(), entityClass);
         addEntityToNoCollisionTeam(entity);
+
     }
 
     private void updateSpirit() {

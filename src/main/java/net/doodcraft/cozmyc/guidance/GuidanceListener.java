@@ -167,6 +167,8 @@ public class GuidanceListener implements Listener {
 
         if (bPlayer == null || !bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance")) return;
 
+        Guidance.lastEntity.remove(player.getUniqueId());  // forget the tracked entity type for this player
+
         boolean foundGuidance = false;
 
         for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
