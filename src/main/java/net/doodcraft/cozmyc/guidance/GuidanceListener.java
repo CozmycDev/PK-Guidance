@@ -7,10 +7,11 @@ import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.*;
-import com.projectkorra.projectkorra.util.ParticleEffect;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.Particle;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Warden;
@@ -58,8 +59,16 @@ public class GuidanceListener implements Listener {
 
     @EventHandler
     public void onTarget(EntityTargetEvent event) {
-        if (!(event.getTarget() instanceof LivingEntity)) return;
-        if (event.getTarget() != null && Guidance.getSpirits().containsValue((LivingEntity) event.getTarget())) {
+        LivingEntity entity = event.getEntity() instanceof LivingEntity ? (LivingEntity) event.getEntity() : null;
+        LivingEntity target = event.getTarget() instanceof LivingEntity ? (LivingEntity) event.getTarget() : null;
+
+        if (entity == null && target == null) return;
+
+        if (target != null && Guidance.getSpirits().containsValue(target)) {
+            event.setCancelled(true);
+        }
+
+        if (entity != null && Guidance.getSpirits().containsValue(entity)) {
             event.setCancelled(true);
         }
     }
@@ -144,11 +153,6 @@ public class GuidanceListener implements Listener {
     }
 
     @EventHandler
-    public void onReload(BendingReloadEvent event) {
-        LightManager.get().removeAllLights();
-    }
-
-    @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         if (!player.isOnline() || player.isDead()) return;
@@ -175,7 +179,7 @@ public class GuidanceListener implements Listener {
 
     @EventHandler
     public void onChange(PlayerChangeElementEvent event) {
-        Player player = event.getTarget();
+        Player player = getPlayer(event.getTarget());
 
         if (!player.isOnline() || player.isDead()) return;
 
@@ -200,7 +204,7 @@ public class GuidanceListener implements Listener {
 
     @EventHandler
     public void onChange(PlayerChangeSubElementEvent event) {
-        Player player = event.getTarget();
+        Player player = getPlayer(event.getTarget());
 
         if (!player.isOnline() || player.isDead()) return;
 
@@ -277,8 +281,25 @@ public class GuidanceListener implements Listener {
         LivingEntity spirit = Guidance.getSpirits().get(playerId);
 
         if (spirit != null && spirit.getUniqueId().equals(spirit.getUniqueId())) {
-            ParticleEffect.HEART.display(spirit.getLocation(), 5, Math.random(), Math.random(), Math.random());
+            spirit.getWorld().spawnParticle(
+                    Particle.HEART,
+                    spirit.getLocation(),
+                    5,
+                    0.5, 0.5, 0.5,
+                    0.02
+            );
+
             event.setCancelled(true);
         }
+    }
+
+    private Player getPlayer(Object target) {
+        if (target instanceof Player) {
+            return (Player) target;
+        }
+        if (target instanceof OfflinePlayer) {
+            return ((OfflinePlayer) target).getPlayer();
+        }
+        return null;
     }
 }

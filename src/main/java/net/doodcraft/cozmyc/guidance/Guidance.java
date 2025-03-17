@@ -8,7 +8,7 @@ import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.SpiritualAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
-import com.projectkorra.projectkorra.util.ParticleEffect;
+import com.projectkorra.projectkorra.util.LightManager;
 
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -376,9 +376,17 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     private void spiritEffects() {
         if (this.displayParticles) {
-            ParticleEffect.FLASH.display(this.getEntity().getLocation(), 1, 0.5, 1.5, 0.5);
-            ParticleEffect.END_ROD.display(this.getEntity().getLocation(), 4, 0.5, 1.5, 0.5);
+            Location loc = this.getEntity().getLocation();
+
+            this.getEntity().getWorld().spawnParticle(
+                    Particle.FLASH, loc, 1, 0.5, 1.5, 0.5, 0.02
+            );
+
+            this.getEntity().getWorld().spawnParticle(
+                    Particle.END_ROD, loc, 4, 0.5, 1.5, 0.5, 0.02
+            );
         }
+
 
         if (this.playSounds && this.getEntity().getLocation().getWorld() != null)
             this.getEntity().getLocation().getWorld().playSound(this.getEntity().getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.65f);
@@ -403,7 +411,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             Block block = location.getBlock();
 
             if (block.isEmpty() || block.getType() == Material.WATER) {
-                LightManager.get().addLight(location, entityLightLevel, 350L, null, null);
+                LightManager.createLight(location).brightness(entityLightLevel).timeUntilFadeout(350L).emit();
             }
         }
     }
@@ -489,7 +497,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.1.0";
+        return "1.2.0";
     }
 
     @SuppressWarnings("unchecked")
