@@ -72,8 +72,9 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         this.playSounds = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.PlaySounds");
         this.removesBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.RemovesBlindness");
 
-        this.state = defaultActive ? AbilityState.ACTIVE : AbilityState.INACTIVE;
+        this.state = (trackedStates.get(player.getUniqueId()) == AbilityState.ACTIVE) ? AbilityState.ACTIVE : (defaultActive ? AbilityState.ACTIVE : AbilityState.INACTIVE);
         trackedStates.put(player.getUniqueId(), this.state);
+
         this.lastSpawnTime = 0;
 
         start();
