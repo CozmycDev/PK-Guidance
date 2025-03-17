@@ -5,6 +5,7 @@ import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
+import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.SpiritualAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
@@ -32,6 +33,10 @@ import java.util.regex.Pattern;
 
 public final class Guidance extends SpiritualAbility implements AddonAbility {
 
+    public static int guidanceTaskId = -1;
+
+    public static final HashMap<UUID, AbilityState> trackedStates = new HashMap<>();
+
     private static final Pattern colorPattern = Pattern.compile("#[a-fA-F0-9]{6}");
     private static final Map<UUID, LivingEntity> SPIRITS = new ConcurrentHashMap<>();
     private static final List<Class<? extends LivingEntity>> adultSpiritClasses = new ArrayList<>();
@@ -54,6 +59,8 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     public Guidance(Player player) {
         super(player);
 
+        boolean defaultActive = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.DefaultActive");
+
         this.activationLightLevel = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.ActivationLightLevel");
         this.allowInspect = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.AllowInspect");
         this.alwaysDisplayName = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName");
@@ -65,7 +72,8 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         this.playSounds = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.PlaySounds");
         this.removesBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.RemovesBlindness");
 
-        this.state = AbilityState.ACTIVE;
+        this.state = defaultActive ? AbilityState.ACTIVE : AbilityState.INACTIVE;
+        trackedStates.put(player.getUniqueId(), this.state);
         this.lastSpawnTime = 0;
 
         start();
@@ -448,6 +456,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         babyList.add("sniffer");
         babyList.add("goat");
 
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.DefaultActive", true);
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.ActivationLightLevel", 5);
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AllowInspect", true);
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName", true);
@@ -476,13 +485,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         ProjectKorra.plugin.getLogger().info("Guidance by LuxaelNI and Cozmyc is now enabled!");
 
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!player.isOnline() || player.isDead()) continue;
-            BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-                new Guidance(player);
-            }
-        }
+        startGuidanceTask();
     }
 
     @Override
@@ -538,7 +541,6 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         return noError;
     }
 
-    // todo
     private void registerNoCollisionTeam() {
         ScoreboardManager scoreboardManager = Bukkit.getScoreboardManager();
         if (scoreboardManager == null) return;
@@ -560,7 +562,6 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         this.state = state;
     }
 
-    // todo
     private void addEntityToNoCollisionTeam(Entity entity) {
         ScoreboardManager scoreboardManager = Bukkit.getScoreboardManager();
         if (scoreboardManager == null) return;
@@ -584,5 +585,32 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             }
         }
         return false;
+    }
+
+    public static void startGuidanceTask() {
+        if (guidanceTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(guidanceTaskId);
+        }
+
+        guidanceTaskId = Bukkit.getScheduler().runTaskTimer(ProjectKorra.plugin, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+                if (bPlayer == null) continue;
+
+                UUID uuid = player.getUniqueId();
+                boolean hasGuidance = ElementalAbility.getAbilitiesByInstances().stream()
+                        .anyMatch(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid));
+
+                if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+                    if (!hasGuidance) {
+                        new Guidance(player);
+                    }
+                } else {
+                    ElementalAbility.getAbilitiesByInstances().stream()
+                            .filter(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid))
+                            .forEach(ability -> ((Guidance) ability).remove());
+                }
+            }
+        }, 0L, 40L).getTaskId();
     }
 }

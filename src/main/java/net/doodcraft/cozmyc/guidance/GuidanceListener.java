@@ -1,7 +1,6 @@
 package net.doodcraft.cozmyc.guidance;
 
 import com.projectkorra.projectkorra.BendingPlayer;
-import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
@@ -10,7 +9,6 @@ import com.projectkorra.projectkorra.event.*;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.Particle;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -153,81 +151,6 @@ public class GuidanceListener implements Listener {
     }
 
     @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        if (!player.isOnline() || player.isDead()) return;
-        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
-            BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-            if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-                new Guidance(player);
-            }
-        }, 5L);
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-        UUID uuid = player.getUniqueId();
-
-        for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
-            if (ability.getName().equalsIgnoreCase("Guidance") && ability.getPlayer().getUniqueId().equals(uuid)) {
-                Guidance guidance = (Guidance) ability;
-                guidance.remove();
-            }
-        }
-    }
-
-    @EventHandler
-    public void onChange(PlayerChangeElementEvent event) {
-        Player player = getPlayer(event.getTarget());
-
-        if (!player.isOnline() || player.isDead()) return;
-
-        UUID uuid = player.getUniqueId();
-        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-
-        if (!bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-            for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
-                if (ability.getName().equalsIgnoreCase("Guidance") && ability.getPlayer().getUniqueId().equals(uuid)) {
-                    Guidance guidance = (Guidance) ability;
-                    guidance.remove();
-                }
-            }
-        }
-
-        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
-            if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-                new Guidance(player);
-            }
-        }, 5L);
-    }
-
-    @EventHandler
-    public void onChange(PlayerChangeSubElementEvent event) {
-        Player player = getPlayer(event.getTarget());
-
-        if (!player.isOnline() || player.isDead()) return;
-
-        UUID uuid = player.getUniqueId();
-        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-
-        if (!bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-            for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
-                if (ability.getName().equalsIgnoreCase("Guidance") && ability.getPlayer().getUniqueId().equals(uuid)) {
-                    Guidance guidance = (Guidance) ability;
-                    guidance.remove();
-                }
-            }
-        }
-
-        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> {
-            if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-                new Guidance(player);
-            }
-        }, 5L);
-    }
-
-    @EventHandler
     public void PlayerDropItemEvent(PlayerDropItemEvent event) {
         recentlyDropped.add(event.getPlayer().getUniqueId());
         Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> recentlyDropped.remove(event.getPlayer().getUniqueId()), 2L);
@@ -257,6 +180,7 @@ public class GuidanceListener implements Listener {
                     guidance.setState(AbilityState.ACTIVE);
                     Guidance.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn"));
                 }
+                Guidance.trackedStates.put(player.getUniqueId(), guidance.getState());
                 break;
             }
         }
@@ -293,13 +217,10 @@ public class GuidanceListener implements Listener {
         }
     }
 
-    private Player getPlayer(Object target) {
-        if (target instanceof Player) {
-            return (Player) target;
+    @EventHandler
+    public void onReload(BendingReloadEvent event) {
+        if (Guidance.guidanceTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(Guidance.guidanceTaskId);
         }
-        if (target instanceof OfflinePlayer) {
-            return ((OfflinePlayer) target).getPlayer();
-        }
-        return null;
     }
 }
