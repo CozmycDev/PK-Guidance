@@ -4,28 +4,26 @@
 
 # Guidance Ability for ProjectKorra
 
-This is an addon ability for the [ProjectKorra](https://projectkorra.com/) plugin for Spigot Minecraft servers. This
-ability allows players to summon friendly spirits that provide light and assistance. This concept was designed by
-LuxaelNi.
-
-https://github.com/user-attachments/assets/e21559eb-ca2e-48b1-bc52-4e5c203e6b33
+This is an addon ability for the [ProjectKorra](https://projectkorra.com/) plugin for Spigot Minecraft servers. This ability allows players to summon friendly spirits that provide light and assistance. 
+This concept was designed by LuxaelNi.
 
 ## Description
 
-**Guidance** is a Spiritual ability that enables players to summon a 'Spirit Buddy' while in darkness. This friendly
-spirit follows the player, acting as a moving light source and providing various beneficial effects.
+**Guidance** is a Spiritual ability that enables players to summon a 'Spirit Buddy' while in darkness. This friendly spirit follows the player, acting as a moving light source and providing various beneficial effects.
 
 ### Features
 
 - **Summon Spirit**: Summon a friendly spirit that follows you around and provides light.
-- **Blindness Cure**: Automatically cures blindness and darkness effects from nearby players.
-- **Particle Effects**: Displays particles around the spirit for a visual effect.
-- **Customizable**: Various settings can be adjusted, such as light levels, entity types, and names.
+- **Blindness/Darkness Cure**: Automatically cures blindness and darkness effects from nearby players or through interaction.
+- **Adjustable Follow Distance**: Players can change how far the spirit follows by holding shift and scrolling.
+- **Customizable**: Various settings and defaults can be adjusted, such as particles, light levels, entity types, and names.
+- **Persistent Preferences**: Remembers a player's spirit name and entity type across instances (but not restarts yet).
 
 ## Instructions
 
-- **Activation**: When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to
-  toggle the ability on or off. Hold Shift to move the spirit to a specific location.
+- **Activation**: When in darkness, friendly spirits will automatically spawn if `DefaultActive` is enabled. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location.
+- **Adjust Follow Distance**: With this ability selected, hold Shift and scroll to adjust how closely the spirit follows.
+- **Interaction Mechanic**: Players can interact with their spirit by right-clicking, triggering unique effects.
 
 ## Installation
 
@@ -35,88 +33,75 @@ spirit follows the player, acting as a moving light source and providing various
 
 ## Compatibility
 
-- **Minecraft Version**: Tested and working on MC 1.20.4.
-- **ProjectKorra Version**: Tested and working on PK 1.11.2 and 1.11.3. Might support earlier versions too.
+- **Minecraft Version**: Tested and working on MC 1.20.4, 1.21.1 and 1.21.4.
+- **ProjectKorra Version**: Tested and working on PK 1.11.2, 1.11.3, and PK 1.12 BETA 12 and PRE-RELEASE 3.
 
 ## Configuration
 
-The configuration for this ability can be found in the `ProjectKorra` configuration file (`config.yml`). Below are the
-default settings:
+The configuration for this ability can be found in the `ProjectKorra` configuration file (`config.yml`). Below are the default settings:
 
 ```yaml
 ExtraAbilities:
   Cozmyc:
     Guidance:
-      ActivationLightLevel: 5
-      AllowInspect: true
-      AlwaysDisplayName: true
-      DisplayParticles: true
-      EntityLightLevel: 15
-      EntityNames:
-      - '&aSpirit Buddy'
-      - '&aFriendly Spirit'
-      FollowDistance: 4
-      InspectRange: 64
-      PlaySounds: true
-      RemovesBlindness: true
-      Language:
-        Description: 'Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a Spirit Buddy will spawn, following the player as a moving light source.'
-        Instructions: 'When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location.'
-        ToggledOn: '&aFriendly spirits are now following you'
-        ToggledOff: '&cFriendly spirits are no longer following you'
+      DefaultActive: true
+      AlwaysDisplayName: false
+      CureRange: 8
+      Teleport:
+        Sound: true
+        Particles: true
+        Flash: true
+      FollowDistance:
+        AllowChange: true
+        Default: 2
+        Min: 1
+        Max: 10
+      Inspect:
+        Enabled: true
+        Range: 64
+      Boon:
+        Cure:
+          Blindness: false
+          Darkness: false
+        HeartParticles: 5
+      Passive:
+        CureBlindness: true
+        CureDarkness: true
+        ActivationLightLevel: 5
+        EntityLightLevel: 15
       EntityTypes:
         Adult:
-        - allay
-        - bat
-        - cat
-        - chicken
-        - frog
-        - ocelot
-        - parrot
-        - rabbit
-        - bee
-        - fox
-        - wolf
+          - allay
+          - bat
+          - cat
+          - chicken
+          - frog
+          - ocelot
+          - parrot
+          - rabbit
+          - bee
+          - fox
+          - wolf
         Baby:
-        - panda
-        - polar_bear
-        - sniffer
-        - goat
+          - panda
+          - polar_bear
+          - sniffer
+          - goat
+      EntityNames:
+        - '#cab0ffSpirit Buddy'
+        - '#cab0ffFriendly Spirit'
+      Language:
+        Description: Friendly spirits will naturally offer help to proficient airbenders.
+          While in darkness, a 'Spirit Buddy' will spawn, following the player as
+          a moving light source.
+        Instructions: When in darkness, friendly spirits will automatically spawn.
+          With this ability selected, Left Click to toggle the ability on or off.
+          Hold Shift to move the spirit to a specific location or switch item slots
+          to adjust the follow distance.
+        ToggledOn: '&aFriendly spirits are now following you'
+        ToggledOff: '&cFriendly spirits are no longer following you'
 ```
 
 ## Development
 
 - **Authors**: LuxaelNI, Cozmyc
-
-## Features
-
-### Summon Spirit
-
-When the player's light level is below the activation threshold, a spirit is summoned. The spirit follows the player and
-acts as a moving light source.
-
-### Blindness Cure
-
-If the `RemovesBlindness` setting is enabled, the spirit will automatically cure nearby players of blindness and
-darkness effects.
-
-### Particle Effects
-
-If the `DisplayParticles` setting is enabled, the spirit will emit particles, adding a visual effect to its presence.
-
-### Customizable
-
-Various aspects of the ability can be customized via the configuration file, including the types of entities used for
-the spirits, their names, and the light levels they provide.
-
-## Usage
-
-- **Summon Spirit**: The spirit is automatically summoned when the player's light level is below the activation
-  threshold.
-- **Move Spirit**: Hold Shift to inspect and move the spirit to a specific location.
-- **Toggle Ability**: Left Click to toggle the ability on or off.
-
-## Setup Entities
-
-The ability supports a variety of entity types for the spirits, which can be customized in the configuration file. The
-default setup includes a mix of adult and baby entities, ensuring a diverse range of spirits. You can find a full list of entity types available [here](https://hub.spigotmc.org/javadocs/spigot/org/bukkit/entity/EntityType.html) but note only [LivingEntity](https://hub.spigotmc.org/javadocs/spigot/org/bukkit/entity/LivingEntity.html) types are allowed. There may be some issues with specific hostile mobs, so add them at your own risk!
