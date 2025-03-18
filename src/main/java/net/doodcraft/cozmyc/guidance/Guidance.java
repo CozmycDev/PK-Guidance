@@ -5,66 +5,67 @@ import com.projectkorra.projectkorra.Element;
 import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.SpiritualAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
 import com.projectkorra.projectkorra.util.LightManager;
-
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
-
-import org.bukkit.*;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.block.Block;
-import org.bukkit.entity.*;
+import org.bukkit.entity.Ageable;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.Slime;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.BlockIterator;
 import org.bukkit.util.Vector;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public final class Guidance extends SpiritualAbility implements AddonAbility {
 
-    public static int guidanceTaskId = -1;
-
     public static final HashMap<UUID, AbilityState> trackedStates = new HashMap<>();
-
-    private static final Map<UUID, Guidance> trackedEntities = new ConcurrentHashMap<>();
-
+    public static final Map<UUID, Guidance> trackedEntities = new ConcurrentHashMap<>();
     public static final HashMap<UUID, Class<? extends LivingEntity>> trackedTypes = new HashMap<>();
     public static final HashMap<UUID, Integer> trackedFollowDistance = new HashMap<>();
     public static final HashMap<UUID, String> trackedNames = new HashMap<>();
-
-    private static final Pattern colorPattern = Pattern.compile("#[a-fA-F0-9]{6}");
-    private static final Map<UUID, LivingEntity> SPIRITS = new ConcurrentHashMap<>();
-
     private static final List<Class<? extends LivingEntity>> adultSpiritClasses = new ArrayList<>();
     private static final List<Class<? extends LivingEntity>> babySpiritClasses = new ArrayList<>();
-
+    private static final Map<UUID, LivingEntity> SPIRITS = new ConcurrentHashMap<>();
+    public static int guidanceTaskId = -1;
+    public final int followDistance;
+    public final boolean allowChangeFollowDistance;
+    public final int minFollowDistance;
+    public final int maxFollowDistance;
     private final int activationLightLevel;
+    private final boolean passivelyCuresBlindness;
+    private final boolean passivelyCuresDarkness;
     private final boolean allowInspect;
     private final boolean alwaysDisplayName;
     private final boolean displayParticles;
     private final boolean displayParticlesFlash;
     private final int entityLightLevel;
     private final List<String> entityNames;
-    public final int followDistance;
-    public final boolean allowChangeFollowDistance;
-    public final int minFollowDistance;
-    public final int maxFollowDistance;
     private final int inspectRange;
     private final boolean playSounds;
     private final boolean cureBlindness;
     private final boolean cureDarkness;
     private final int cureRange;
-    private final boolean passivelyCuresBlindness;
-    private final boolean passivelyCuresDarkness;
-
     private AbilityState state;
     private long lastSpawnTime;
     private transient long lastInspectCooldownStart = 0;
@@ -110,32 +111,42 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         start();
     }
 
+    public static Guidance getInstanceBySpirit(LivingEntity spirit) {
+        if (spirit == null) {
+            return null;
+        }
+        return trackedEntities.get(spirit.getUniqueId());
+    }
+
+    public static void startGuidanceTask() {
+        if (guidanceTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(guidanceTaskId);
+        }
+
+        guidanceTaskId = Bukkit.getScheduler().runTaskTimer(ProjectKorra.plugin, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+                if (bPlayer == null) continue;
+
+                UUID uuid = player.getUniqueId();
+                boolean hasGuidance = ElementalAbility.getAbilitiesByInstances().stream()
+                        .anyMatch(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid));
+
+                if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+                    if (!hasGuidance) {
+                        new Guidance(player);
+                    }
+                } else {
+                    ElementalAbility.getAbilitiesByInstances().stream()
+                            .filter(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid))
+                            .forEach(CoreAbility::remove);
+                }
+            }
+        }, 0L, 40L).getTaskId();
+    }
+
     public static Map<UUID, LivingEntity> getSpirits() {
         return SPIRITS;
-    }
-
-    public static void sendActionBar(Player player, String message) {
-        if (player == null || !player.isOnline() || message == null) {
-            return;
-        }
-
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(addColor(message)));
-    }
-
-    public static String addColor(String message) {
-        Matcher matcher = colorPattern.matcher(message);
-
-        while (matcher.find()) {
-            String color = message.substring(matcher.start(), matcher.end());
-            message = message.replace(color, net.md_5.bungee.api.ChatColor.of(color) + "");
-            matcher = colorPattern.matcher(message);
-        }
-
-        return ChatColor.translateAlternateColorCodes('&', message);
-    }
-
-    public static String parse(String message, Player player) {
-        return message.replaceAll("<player>", player.getName());
     }
 
     @Override
@@ -155,7 +166,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             emitLight();
             updateSpirit();
 
-            if (this.passivelyCuresBlindness) cureBlindness();
+            if (this.passivelyCuresBlindness || this.passivelyCuresDarkness) cureBlindness();
 
             updateSpiritLocation();
         } else {
@@ -188,6 +199,171 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     @Override
     public Location getLocation() {
         return this.getEntity() != null ? this.getEntity().getLocation() : null;
+    }
+
+    @Override
+    public void remove() {
+        removeEntity();
+        super.remove();
+    }
+
+    @Override
+    public boolean isHiddenAbility() {
+        return false;
+    }
+
+    @Override
+    public String getInstructions() {
+        return ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.Instructions");
+    }
+
+    @Override
+    public String getDescription() {
+        return ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.Description");
+    }
+
+    @Override
+    public boolean isCollidable() {
+        return false;
+    }
+
+    @Override
+    public List<Location> getLocations() {
+        if (this.getEntity() == null) return new ArrayList<>();
+        return Collections.singletonList(this.getEntity().getLocation());
+    }
+
+    @Override
+    public Element getElement() {
+        return Element.SPIRITUAL;
+    }
+
+    @Override
+    public void load() {
+        ProjectKorra.plugin.getServer().getPluginManager().registerEvents(new GuidanceListener(), ProjectKorra.plugin);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.DefaultActive", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName", false);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.CureRange", 8);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Sound", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Particles", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Flash", true);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.AllowChange", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Default", 2);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Min", 1);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Max", 10);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Inspect.Enabled", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Inspect.Range", 64);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Blindness", false);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Darkness", false);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.HeartParticles", 5);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.CureBlindness", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.CureDarkness", true);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.ActivationLightLevel", 5);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.EntityLightLevel", 15);
+
+        List<String> adultList = new ArrayList<>();
+        adultList.add("allay");
+        adultList.add("bat");
+        adultList.add("cat");
+        adultList.add("chicken");
+        adultList.add("frog");
+        adultList.add("ocelot");
+        adultList.add("parrot");
+        adultList.add("rabbit");
+        adultList.add("bee");
+        adultList.add("fox");
+        adultList.add("wolf");
+
+        List<String> babyList = new ArrayList<>();
+        babyList.add("panda");
+        babyList.add("polar_bear");
+        babyList.add("sniffer");
+        babyList.add("goat");
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult", adultList);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Baby", babyList);
+
+        List<String> nameList = new ArrayList<>();
+        nameList.add("#cab0ffSpirit Buddy");
+        nameList.add("#cab0ffFriendly Spirit");
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityNames", nameList);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Description", "Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a 'Spirit Buddy' will spawn, following the player as a moving light source.");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Instructions", "When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location or switch item slots to adjust the follow distance.");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn", "&aFriendly spirits are now following you");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff", "&cFriendly spirits are no longer following you");
+
+        ConfigManager.defaultConfig.save();
+
+        if (!setupEntities()) {
+            ProjectKorra.plugin.getLogger().info("There was an error setting up entity types, please check 'ExtraAbilities.Cozmyc.Guidance.EntityTypes` in ProjectKorra's config.yml.");
+            this.stop();
+            return;
+        }
+
+        ProjectKorra.plugin.getLogger().info("Guidance " + getVersion() + " by LuxaelNI and Cozmyc is now enabled!");
+
+        startGuidanceTask();
+    }
+
+    @Override
+    public void stop() {
+        ProjectKorra.plugin.getLogger().info("Guidance is now disabled!");
+    }
+
+    @Override
+    public String getAuthor() {
+        return "LuxaelNI, Cozmyc";
+    }
+
+    @Override
+    public String getVersion() {
+        return "1.3.0";
+    }
+
+    private boolean setupEntities() {
+        List<String> adults = ConfigManager.defaultConfig.get().getStringList("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult");
+        List<String> babies = ConfigManager.defaultConfig.get().getStringList("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Baby");
+
+        boolean noError = true;
+
+        for (String adult : adults) {
+            try {
+                Class<? extends Entity> entityClass = EntityUtil.getEntityClass(adult);
+                if (LivingEntity.class.isAssignableFrom(entityClass)) {
+                    adultSpiritClasses.add((Class<? extends LivingEntity>) entityClass);
+                } else {
+                    ProjectKorra.plugin.getLogger().info("Cannot add adult entity to Guidance, ensure its a living entity: " + adult);
+                }
+            } catch (IllegalArgumentException exception) {
+                noError = false;
+                ProjectKorra.plugin.getLogger().info("Cannot add adult entity to Guidance because it might not exist, check the name: " + adult);
+            }
+        }
+
+        for (String baby : babies) {
+            try {
+                Class<? extends Entity> entityClass = EntityUtil.getEntityClass(baby);
+                if (LivingEntity.class.isAssignableFrom(entityClass)) {
+                    babySpiritClasses.add((Class<? extends LivingEntity>) entityClass);
+                } else {
+                    ProjectKorra.plugin.getLogger().info("Cannot add baby entity to Guidance, ensure its a living entity:: " + baby);
+                }
+            } catch (IllegalArgumentException exception) {
+                noError = false;
+                ProjectKorra.plugin.getLogger().info("Cannot add baby entity to Guidance because it might not exist, check the name: " + baby);
+            }
+        }
+
+        return noError;
     }
 
     public LivingEntity getEntity() {
@@ -223,9 +399,9 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         LivingEntity entity = spawnLocation.getWorld().spawn(spawnLocation, entityClass);
 
         setupSpirit(entity);
+
         SPIRITS.put(player.getUniqueId(), entity);
         trackedTypes.put(player.getUniqueId(), entityClass);
-
         trackedEntities.put(entity.getUniqueId(), this);
     }
 
@@ -362,7 +538,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             entityName = this.entityNames.get(ThreadLocalRandom.current().nextInt(this.entityNames.size()));
             trackedNames.put(player.getUniqueId(), entityName);
         }
-        entity.setCustomName(addColor(parse(entityName, this.player)));
+        entity.setCustomName(StaticMethods.addColor(StaticMethods.parse(entityName, this.player)));
 
         if (this.alwaysDisplayName) entity.setCustomNameVisible(true);
 
@@ -379,44 +555,6 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         if (entity instanceof Slime) {
             ((Slime) entity).setSize(0);
         }
-    }
-
-    @Override
-    public void remove() {
-        removeEntity();
-        super.remove();
-    }
-
-    public void removeEntity() {
-        LivingEntity spirit = SPIRITS.get(this.player.getUniqueId());
-        SPIRITS.remove(this.player.getUniqueId());
-        if (spirit != null) spirit.remove();
-    }
-
-    @Override
-    public boolean isHiddenAbility() {
-        return false;
-    }
-
-    @Override
-    public String getInstructions() {
-        return ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.Instructions");
-    }
-
-    @Override
-    public String getDescription() {
-        return ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.Description");
-    }
-
-    @Override
-    public boolean isCollidable() {
-        return false;
-    }
-
-    @Override
-    public List<Location> getLocations() {
-        if (this.getEntity() == null) return new ArrayList<>();
-        return Collections.singletonList(this.getEntity().getLocation());
     }
 
     private void spiritEffects() {
@@ -460,138 +598,10 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         }
     }
 
-    @Override
-    public Element getElement() {
-        return Element.SPIRITUAL;
-    }
-
-    @Override
-    public void load() {
-        ProjectKorra.plugin.getServer().getPluginManager().registerEvents(new GuidanceListener(), ProjectKorra.plugin);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.DefaultActive", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName", false);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.CureRange", 8);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Sound", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Particles", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Flash", true);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.AllowChange", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Default", 2);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Min", 1);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Max", 10);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Inspect.Enabled", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Inspect.Range", 64);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Blindness", false);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Darkness", false);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.HeartParticles", 5);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.CureBlindness", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.CureDarkness", true);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.ActivationLightLevel", 5);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.EntityLightLevel", 15);
-
-        List<String> adultList = new ArrayList<>();
-        adultList.add("allay");
-        adultList.add("bat");
-        adultList.add("cat");
-        adultList.add("chicken");
-        adultList.add("frog");
-        adultList.add("ocelot");
-        adultList.add("parrot");
-        adultList.add("rabbit");
-        adultList.add("bee");
-        adultList.add("fox");
-        adultList.add("wolf");
-
-        List<String> babyList = new ArrayList<>();
-        babyList.add("panda");
-        babyList.add("polar_bear");
-        babyList.add("sniffer");
-        babyList.add("goat");
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult", adultList);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Baby", babyList);
-
-        List<String> nameList = new ArrayList<>();
-        nameList.add("#cab0ffSpirit Buddy");
-        nameList.add("#cab0ffFriendly Spirit");
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityNames", nameList);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Description", "Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a 'Spirit Buddy' will spawn, following the player as a moving light source.");
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Instructions", "When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location or switch item slots to adjust the follow distance.");
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn", "&aFriendly spirits are now following you");
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff", "&cFriendly spirits are no longer following you");
-
-        ConfigManager.defaultConfig.save();
-
-        if (!setupEntities()) {
-            ProjectKorra.plugin.getLogger().info("There was an error setting up entity types, please check 'ExtraAbilities.Cozmyc.Guidance.EntityTypes` in ProjectKorra's config.yml.");
-            this.stop();
-            return;
-        }
-
-        ProjectKorra.plugin.getLogger().info("Guidance " + getVersion() + " by LuxaelNI and Cozmyc is now enabled!");
-
-        startGuidanceTask();
-    }
-
-    @Override
-    public void stop() {
-        ProjectKorra.plugin.getLogger().info("Guidance is now disabled!");
-    }
-
-    @Override
-    public String getAuthor() {
-        return "LuxaelNI, Cozmyc";
-    }
-
-    @Override
-    public String getVersion() {
-        return "1.3.0";
-    }
-
-    @SuppressWarnings("unchecked")
-    private boolean setupEntities() {
-        List<String> adults = ConfigManager.defaultConfig.get().getStringList("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult");
-        List<String> babies = ConfigManager.defaultConfig.get().getStringList("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Baby");
-
-        boolean noError = true;
-
-        for (String adult : adults) {
-            try {
-                Class<? extends Entity> entityClass = EntityUtil.getEntityClass(adult);
-                if (LivingEntity.class.isAssignableFrom(entityClass)) {
-                    adultSpiritClasses.add((Class<? extends LivingEntity>) entityClass);
-                } else {
-                    ProjectKorra.plugin.getLogger().info("Cannot add adult entity to Guidance, ensure its a living entity: " + adult);
-                }
-            } catch (IllegalArgumentException exception) {
-                noError = false;
-                ProjectKorra.plugin.getLogger().info("Cannot add adult entity to Guidance because it might not exist, check the name: " + adult);
-            }
-        }
-
-        for (String baby : babies) {
-            try {
-                Class<? extends Entity> entityClass = EntityUtil.getEntityClass(baby);
-                if (LivingEntity.class.isAssignableFrom(entityClass)) {
-                    babySpiritClasses.add((Class<? extends LivingEntity>) entityClass);
-                } else {
-                    ProjectKorra.plugin.getLogger().info("Cannot add baby entity to Guidance, ensure its a living entity:: " + baby);
-                }
-            } catch (IllegalArgumentException exception) {
-                noError = false;
-                ProjectKorra.plugin.getLogger().info("Cannot add baby entity to Guidance because it might not exist, check the name: " + baby);
-            }
-        }
-
-        return noError;
+    public void removeEntity() {
+        LivingEntity spirit = SPIRITS.get(this.player.getUniqueId());
+        SPIRITS.remove(this.player.getUniqueId());
+        if (spirit != null) spirit.remove();
     }
 
     public AbilityState getState() {
@@ -618,39 +628,5 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     public boolean isInspectOnCooldown() {
         int inspectCooldownTicks = 60;
         return System.currentTimeMillis() - this.lastInspectCooldownStart < inspectCooldownTicks * 50L;
-    }
-
-    public static Guidance getInstanceBySpirit(LivingEntity spirit) {
-        if (spirit == null) {
-            return null;
-        }
-        return trackedEntities.get(spirit.getUniqueId());
-    }
-
-    public static void startGuidanceTask() {
-        if (guidanceTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(guidanceTaskId);
-        }
-
-        guidanceTaskId = Bukkit.getScheduler().runTaskTimer(ProjectKorra.plugin, () -> {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-                if (bPlayer == null) continue;
-
-                UUID uuid = player.getUniqueId();
-                boolean hasGuidance = ElementalAbility.getAbilitiesByInstances().stream()
-                        .anyMatch(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid));
-
-                if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-                    if (!hasGuidance) {
-                        new Guidance(player);
-                    }
-                } else {
-                    ElementalAbility.getAbilitiesByInstances().stream()
-                            .filter(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid))
-                            .forEach(ability -> ((Guidance) ability).remove());
-                }
-            }
-        }, 0L, 40L).getTaskId();
     }
 }

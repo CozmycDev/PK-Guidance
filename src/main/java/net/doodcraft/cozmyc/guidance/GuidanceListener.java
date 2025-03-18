@@ -5,8 +5,9 @@ import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
-import com.projectkorra.projectkorra.event.*;
-
+import com.projectkorra.projectkorra.event.AbilityDamageEntityEvent;
+import com.projectkorra.projectkorra.event.AbilityVelocityAffectEntityEvent;
+import com.projectkorra.projectkorra.event.BendingReloadEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -18,8 +19,18 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockReceiveGameEvent;
-import org.bukkit.event.entity.*;
-import org.bukkit.event.player.*;
+import org.bukkit.event.entity.EntityCombustEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityPotionEffectEvent;
+import org.bukkit.event.entity.EntityTargetEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.event.world.GenericGameEvent;
 
 import java.util.HashSet;
@@ -74,16 +85,16 @@ public class GuidanceListener implements Listener {
                     if (newDistance >= minDistance && newDistance <= maxDistance) {
                         Guidance.trackedFollowDistance.put(player.getUniqueId(), newDistance);
                         Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () ->
-                                Guidance.sendActionBar(player, Guidance.addColor("#cab0ffFollow distance is now: " + newDistance)), 2L);
+                                StaticMethods.sendActionBar(player, StaticMethods.addColor("#cab0ffFollow distance is now: " + newDistance)), 2L);
                         player.playSound(player.getLocation(), Sound.ENTITY_SNIFFER_DROP_SEED, 0.7f, 2.0f);
                     } else if (newDistance < minDistance) {
                         Guidance.trackedFollowDistance.put(player.getUniqueId(), minDistance);
                         Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () ->
-                                Guidance.sendActionBar(player, Guidance.addColor("#cab0ffFollow distance is now: " + minDistance)), 2L);
+                                StaticMethods.sendActionBar(player, StaticMethods.addColor("#cab0ffFollow distance is now: " + minDistance)), 2L);
                     } else {
                         Guidance.trackedFollowDistance.put(player.getUniqueId(), maxDistance);
                         Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () ->
-                                Guidance.sendActionBar(player, Guidance.addColor("#cab0ffFollow distance is now: " + maxDistance)), 2L);
+                                StaticMethods.sendActionBar(player, StaticMethods.addColor("#cab0ffFollow distance is now: " + maxDistance)), 2L);
                     }
                 }
             }
@@ -257,10 +268,10 @@ public class GuidanceListener implements Listener {
                 Guidance guidance = (Guidance) ability;
                 if (guidance.getState() == AbilityState.ACTIVE) {
                     guidance.setState(AbilityState.INACTIVE);
-                    Guidance.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff"));
+                    StaticMethods.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff"));
                 } else {
                     guidance.setState(AbilityState.ACTIVE);
-                    Guidance.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn"));
+                    StaticMethods.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn"));
                 }
                 Guidance.trackedStates.put(player.getUniqueId(), guidance.getState());
                 break;
@@ -269,7 +280,7 @@ public class GuidanceListener implements Listener {
 
         if (!foundGuidance) {
             new Guidance(player);
-            Guidance.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn"));
+            StaticMethods.sendActionBar(player, ConfigManager.defaultConfig.get().getString("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn"));
         }
 
         event.setCancelled(true);
