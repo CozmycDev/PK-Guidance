@@ -7,6 +7,8 @@
 This is an addon ability for the [ProjectKorra](https://projectkorra.com/) plugin for Spigot Minecraft servers. This ability allows players to summon friendly spirits that provide light and assistance. 
 This concept was designed by LuxaelNi.
 
+https://github.com/user-attachments/assets/e21559eb-ca2e-48b1-bc52-4e5c203e6b33
+
 ## Description
 
 **Guidance** is a Spiritual ability that enables players to summon a 'Spirit Buddy' while in darkness. This friendly spirit follows the player, acting as a moving light source and providing various beneficial effects.
