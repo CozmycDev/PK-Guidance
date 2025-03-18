@@ -10,6 +10,7 @@ import com.projectkorra.projectkorra.event.*;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Warden;
@@ -21,13 +22,91 @@ import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.event.world.GenericGameEvent;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
 import java.util.UUID;
+
 
 public class GuidanceListener implements Listener {
 
-    private static final List<UUID> recentlyDropped = new ArrayList<>();
+    private static final HashSet<UUID> recentlyDropped = new HashSet<>();
+    private final HashSet<UUID> adjustingFollowDistance = new HashSet<>();
+
+    @EventHandler
+    public void onPlayerToggleSneak(PlayerToggleSneakEvent event) {
+        Player player = event.getPlayer();
+        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        if (bPlayer == null) return;
+
+        if (event.isSneaking()) {
+            if (bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance") && Guidance.getAbility(player, Guidance.class) != null && Guidance.getAbility(player, Guidance.class).allowChangeFollowDistance) {
+                adjustingFollowDistance.add(player.getUniqueId());
+            } else {
+                adjustingFollowDistance.remove(player.getUniqueId());
+            }
+        } else {
+            adjustingFollowDistance.remove(player.getUniqueId());
+        }
+    }
+
+    @EventHandler
+    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
+        Player player = event.getPlayer();
+        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        if (bPlayer == null) return;
+
+        if (adjustingFollowDistance.contains(player.getUniqueId())) {
+            event.setCancelled(true);
+            player.getInventory().setHeldItemSlot(event.getPreviousSlot());
+            Guidance guidance = Guidance.getAbility(player, Guidance.class);
+            if (guidance != null) {
+                guidance.startInspectCooldown();
+                int previousSlot = event.getPreviousSlot();
+                int newSlot = event.getNewSlot();
+
+                if (newSlot != previousSlot) {
+                    int currentDistance = Guidance.trackedFollowDistance.getOrDefault(player.getUniqueId(), guidance.followDistance);
+                    int minDistance = guidance.minFollowDistance;
+                    int maxDistance = guidance.maxFollowDistance;
+                    int change = calculateScrollDirection(previousSlot, newSlot);
+
+                    int newDistance = currentDistance - change;
+
+                    if (newDistance >= minDistance && newDistance <= maxDistance) {
+                        Guidance.trackedFollowDistance.put(player.getUniqueId(), newDistance);
+                        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () ->
+                                Guidance.sendActionBar(player, Guidance.addColor("#cab0ffFollow distance is now: " + newDistance)), 2L);
+                        player.playSound(player.getLocation(), Sound.ENTITY_SNIFFER_DROP_SEED, 0.7f, 2.0f);
+                    } else if (newDistance < minDistance) {
+                        Guidance.trackedFollowDistance.put(player.getUniqueId(), minDistance);
+                        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () ->
+                                Guidance.sendActionBar(player, Guidance.addColor("#cab0ffFollow distance is now: " + minDistance)), 2L);
+                    } else {
+                        Guidance.trackedFollowDistance.put(player.getUniqueId(), maxDistance);
+                        Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () ->
+                                Guidance.sendActionBar(player, Guidance.addColor("#cab0ffFollow distance is now: " + maxDistance)), 2L);
+                    }
+                }
+            }
+        }
+    }
+
+    private int calculateScrollDirection(int previousSlot, int newSlot) {
+        if (newSlot > previousSlot) {
+            if (newSlot - previousSlot > 4) {
+                return -1;
+            } else {
+                return 1;
+            }
+        } else if (newSlot < previousSlot) {
+            if (previousSlot - newSlot > 4) {
+                return 1;
+            } else {
+                return -1;
+            }
+        } else {
+            return 0;
+        }
+    }
 
     @EventHandler
     public void onEvent(GenericGameEvent event) {
@@ -167,7 +246,8 @@ public class GuidanceListener implements Listener {
 
         if (bPlayer == null || !bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance")) return;
 
-        Guidance.lastEntity.remove(player.getUniqueId());  // forget the tracked entity type for this player
+        Guidance.trackedTypes.remove(player.getUniqueId());
+        Guidance.trackedNames.remove(player.getUniqueId());
 
         boolean foundGuidance = false;
 
@@ -206,13 +286,18 @@ public class GuidanceListener implements Listener {
         UUID playerId = player.getUniqueId();
         LivingEntity spirit = Guidance.getSpirits().get(playerId);
 
+        Guidance.getInstanceBySpirit(spirit).cureBlindness();
+
         if (spirit != null && spirit.getUniqueId().equals(spirit.getUniqueId())) {
+
             spirit.getWorld().spawnParticle(
                     Particle.HEART,
                     spirit.getLocation(),
-                    5,
+                    ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.Boon.HeartParticles"),
                     0.5, 0.5, 0.5,
-                    0.02
+                    0.02,
+                    null,
+                    true
             );
 
             event.setCancelled(true);

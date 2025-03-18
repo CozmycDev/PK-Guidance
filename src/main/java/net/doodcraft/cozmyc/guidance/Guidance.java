@@ -19,9 +19,6 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.*;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.scoreboard.Scoreboard;
-import org.bukkit.scoreboard.ScoreboardManager;
-import org.bukkit.scoreboard.Team;
 import org.bukkit.util.BlockIterator;
 import org.bukkit.util.Vector;
 
@@ -36,10 +33,16 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     public static int guidanceTaskId = -1;
 
     public static final HashMap<UUID, AbilityState> trackedStates = new HashMap<>();
-    public static final HashMap<UUID, Class<? extends LivingEntity>> lastEntity = new HashMap<>();
+
+    private static final Map<UUID, Guidance> trackedEntities = new ConcurrentHashMap<>();
+
+    public static final HashMap<UUID, Class<? extends LivingEntity>> trackedTypes = new HashMap<>();
+    public static final HashMap<UUID, Integer> trackedFollowDistance = new HashMap<>();
+    public static final HashMap<UUID, String> trackedNames = new HashMap<>();
 
     private static final Pattern colorPattern = Pattern.compile("#[a-fA-F0-9]{6}");
     private static final Map<UUID, LivingEntity> SPIRITS = new ConcurrentHashMap<>();
+
     private static final List<Class<? extends LivingEntity>> adultSpiritClasses = new ArrayList<>();
     private static final List<Class<? extends LivingEntity>> babySpiritClasses = new ArrayList<>();
 
@@ -47,34 +50,60 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     private final boolean allowInspect;
     private final boolean alwaysDisplayName;
     private final boolean displayParticles;
+    private final boolean displayParticlesFlash;
     private final int entityLightLevel;
     private final List<String> entityNames;
-    private final int followDistance;
+    public final int followDistance;
+    public final boolean allowChangeFollowDistance;
+    public final int minFollowDistance;
+    public final int maxFollowDistance;
     private final int inspectRange;
     private final boolean playSounds;
-    private final boolean removesBlindness;
+    private final boolean cureBlindness;
+    private final boolean cureDarkness;
+    private final int cureRange;
+    private final boolean passivelyCuresBlindness;
+    private final boolean passivelyCuresDarkness;
 
     private AbilityState state;
     private long lastSpawnTime;
+    private transient long lastInspectCooldownStart = 0;
 
     public Guidance(Player player) {
         super(player);
 
         boolean defaultActive = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.DefaultActive");
-
-        this.activationLightLevel = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.ActivationLightLevel");
-        this.allowInspect = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.AllowInspect");
-        this.alwaysDisplayName = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName");
-        this.displayParticles = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.DisplayParticles");
-        this.entityLightLevel = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.EntityLightLevel");
-        this.entityNames = ConfigManager.defaultConfig.get().getStringList("ExtraAbilities.Cozmyc.Guidance.EntityNames");
-        this.followDistance = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.FollowDistance");
-        this.inspectRange = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.InspectRange");
-        this.playSounds = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.PlaySounds");
-        this.removesBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.RemovesBlindness");
-
         this.state = (trackedStates.get(player.getUniqueId()) == AbilityState.ACTIVE) ? AbilityState.ACTIVE : (defaultActive ? AbilityState.ACTIVE : AbilityState.INACTIVE);
         trackedStates.put(player.getUniqueId(), this.state);
+
+        this.alwaysDisplayName = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName");
+
+        this.playSounds = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Teleport.Sound");
+        this.displayParticles = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Teleport.Particles");
+        this.displayParticlesFlash = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Teleport.Flash");
+
+        this.followDistance = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Default");
+        int defaultFollowDistance = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Default");
+        trackedFollowDistance.put(player.getUniqueId(), trackedFollowDistance.getOrDefault(player.getUniqueId(), defaultFollowDistance));
+
+        this.allowChangeFollowDistance = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.FollowDistance.AllowChange");
+        this.minFollowDistance = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Min");
+        this.maxFollowDistance = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Max");
+
+        this.allowInspect = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Inspect.Enabled");
+        this.inspectRange = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.Inspect.Range");
+
+        this.activationLightLevel = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.Passive.ActivationLightLevel");
+        this.entityLightLevel = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.Passive.EntityLightLevel");
+
+        this.cureBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Blindness");
+        this.cureDarkness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Darkness");
+        this.cureRange = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Range");
+
+        this.passivelyCuresBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Passive.CureBlindness");
+        this.passivelyCuresDarkness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Passive.CureDarkness");
+
+        this.entityNames = ConfigManager.defaultConfig.get().getStringList("ExtraAbilities.Cozmyc.Guidance.EntityNames");
 
         this.lastSpawnTime = 0;
 
@@ -125,7 +154,9 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             }
             emitLight();
             updateSpirit();
-            cureBlindness();
+
+            if (this.passivelyCuresBlindness) cureBlindness();
+
             updateSpiritLocation();
         } else {
             if (this.getEntity() != null) spiritEffects();
@@ -179,12 +210,12 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         }
 
         Class<? extends LivingEntity> entityClass;
-        if (!lastEntity.containsKey(player.getUniqueId())) {
+        if (!trackedTypes.containsKey(player.getUniqueId())) {
             List<Class<? extends LivingEntity>> combinedList = new ArrayList<>(adultSpiritClasses);
             combinedList.addAll(babySpiritClasses);
             entityClass = combinedList.get(ThreadLocalRandom.current().nextInt(combinedList.size()));
         } else {
-            entityClass = lastEntity.get(player.getUniqueId());  // repeat last entity type for this player
+            entityClass = trackedTypes.get(player.getUniqueId());  // repeat last entity type for this player
         }
 
         if (spawnLocation.getWorld() == null) return;
@@ -193,9 +224,9 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         setupSpirit(entity);
         SPIRITS.put(player.getUniqueId(), entity);
-        lastEntity.put(player.getUniqueId(), entityClass);
-        addEntityToNoCollisionTeam(entity);
+        trackedTypes.put(player.getUniqueId(), entityClass);
 
+        trackedEntities.put(entity.getUniqueId(), this);
     }
 
     private void updateSpirit() {
@@ -208,12 +239,13 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         }
     }
 
-    private void cureBlindness() {
-        if (!this.removesBlindness) return;
-        for (Entity entity : GeneralMethods.getEntitiesAroundPoint(this.getEntity().getLocation(), 5)) {
+    public void cureBlindness() {
+        for (Entity entity : GeneralMethods.getEntitiesAroundPoint(this.getEntity().getLocation(), this.cureRange)) {
             if (entity instanceof Player p) {
-                if (p.hasPotionEffect(PotionEffectType.DARKNESS) || p.hasPotionEffect(PotionEffectType.BLINDNESS)) {
+                if ((this.cureDarkness || this.passivelyCuresDarkness) && p.hasPotionEffect(PotionEffectType.DARKNESS)) {
                     p.removePotionEffect(PotionEffectType.DARKNESS);
+                }
+                if ((this.cureBlindness || this.passivelyCuresBlindness) && p.hasPotionEffect(PotionEffectType.BLINDNESS)) {
                     p.removePotionEffect(PotionEffectType.BLINDNESS);
                 }
             }
@@ -233,14 +265,14 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         Location eyeLocation = player.getEyeLocation();
         Vector direction = eyeLocation.getDirection().normalize();
-        return eyeLocation.add(direction.multiply(this.followDistance));
+        return eyeLocation.add(direction.multiply(trackedFollowDistance.get(player.getUniqueId())));
     }
 
     private void updateSpiritLocation() {
         if (this.getEntity().getLocation().getWorld() == null) return;
 
         // inspect mode
-        if (this.allowInspect && this.player.isSneaking() && this.bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance")) {
+        if (this.allowInspect && this.player.isSneaking() && this.bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance") && !isInspectOnCooldown()) {
             Location cursor = getLookingAt(this.inspectRange);
             if (cursor == null) return;
 
@@ -268,28 +300,36 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         }
 
         // follow mode
-        Location cursor = getLookingAt(this.followDistance);
+        Location cursor = getLookingAt(trackedFollowDistance.get(player.getUniqueId()));
         if (cursor == null) return;
 
         Location safeLocation = findSafeLocation(cursor);
         if (safeLocation == null) return;
 
-        if (!this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld()) || this.getEntity().getLocation().distance(this.player.getLocation()) >= this.followDistance * 2) {
+        int currentFollowDistance = trackedFollowDistance.get(player.getUniqueId());
+        double entityToPlayerDistance = this.getEntity().getLocation().distance(this.player.getLocation());
+
+        if (!this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld()) || entityToPlayerDistance >= currentFollowDistance + maxFollowDistance) {
             spiritEffects();
             this.getEntity().teleport(safeLocation);
             spiritEffects();
-        }
+        } else {
+            if (this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld())) {
+                Vector dir = this.player.getLocation().clone().add(0, 1, 0).subtract(this.getEntity().getLocation()).toVector();
+                Location loc = this.getEntity().getLocation();
+                loc.setDirection(dir);
+                this.getEntity().teleport(loc);
+            }
 
-        if (this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld())) {
-            Vector dir = this.player.getLocation().clone().add(0, 1, 0).subtract(this.getEntity().getLocation()).toVector();
-            Location loc = this.getEntity().getLocation();
-            loc.setDirection(dir);
-            this.getEntity().teleport(loc);
-        }
-
-        if (this.getEntity().getLocation().distance(this.player.getLocation()) > this.followDistance) {
-            Vector velocity = this.player.getLocation().clone().add(0, 1, 0).toVector().subtract(this.getEntity().getLocation().toVector()).normalize();
-            this.getEntity().setVelocity(velocity);
+            if (entityToPlayerDistance < currentFollowDistance - 0.5) {
+                Vector awayVector = this.getEntity().getLocation().toVector().subtract(this.player.getLocation().clone().add(0, 1, 0).toVector()).normalize();
+                this.getEntity().setVelocity(awayVector.multiply(0.2));
+            } else if (entityToPlayerDistance > currentFollowDistance + 0.5) {
+                Vector towardsVector = this.player.getLocation().clone().add(0, 1, 0).toVector().subtract(this.getEntity().getLocation().toVector()).normalize();
+                this.getEntity().setVelocity(towardsVector.multiply(0.2));
+            } else {
+                this.getEntity().setVelocity(new Vector(0, 0, 0));
+            }
         }
     }
 
@@ -315,8 +355,14 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     }
 
     private void setupSpirit(LivingEntity entity) {
-        String randomName = this.entityNames.get(ThreadLocalRandom.current().nextInt(this.entityNames.size()));
-        entity.setCustomName(addColor(parse(randomName, this.player)));
+        String entityName;
+        if (trackedNames.containsKey(player.getUniqueId())) {
+            entityName = trackedNames.get(player.getUniqueId());
+        } else {
+            entityName = this.entityNames.get(ThreadLocalRandom.current().nextInt(this.entityNames.size()));
+            trackedNames.put(player.getUniqueId(), entityName);
+        }
+        entity.setCustomName(addColor(parse(entityName, this.player)));
 
         if (this.alwaysDisplayName) entity.setCustomNameVisible(true);
 
@@ -342,28 +388,9 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     }
 
     public void removeEntity() {
-        if (this.getEntity() != null) {
-            removeEntityFromNoCollisionTeam(this.getEntity());
-            this.getEntity().remove();
-        }
-
+        LivingEntity spirit = SPIRITS.get(this.player.getUniqueId());
         SPIRITS.remove(this.player.getUniqueId());
-    }
-
-    private void removeEntityFromNoCollisionTeam(Entity entity) {
-        ScoreboardManager scoreboardManager = Bukkit.getScoreboardManager();
-        if (scoreboardManager == null) return;
-        Scoreboard scoreboard = scoreboardManager.getMainScoreboard();
-
-        Team noCollisionTeam = scoreboard.getTeam("NoCollisionSpirits");
-        if (noCollisionTeam == null) {
-            noCollisionTeam = scoreboard.registerNewTeam("NoCollisionSpirits");
-            noCollisionTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
-        }
-
-        if (noCollisionTeam.hasEntry(entity.getUniqueId().toString())) {
-            noCollisionTeam.removeEntry(entity.getUniqueId().toString());
-        }
+        if (spirit != null) spirit.remove();
     }
 
     @Override
@@ -393,18 +420,17 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     }
 
     private void spiritEffects() {
+        Location loc = this.getEntity().getLocation();
         if (this.displayParticles) {
-            Location loc = this.getEntity().getLocation();
-
             this.getEntity().getWorld().spawnParticle(
-                    Particle.FLASH, loc, 1, 0.5, 1.5, 0.5, 0.02
-            );
-
-            this.getEntity().getWorld().spawnParticle(
-                    Particle.END_ROD, loc, 4, 0.5, 1.5, 0.5, 0.02
+                    Particle.END_ROD, loc, 4, 0.5, 1.5, 0.5, 0.02, null, true
             );
         }
-
+        if (this.displayParticlesFlash) {
+            this.getEntity().getWorld().spawnParticle(
+                    Particle.FLASH, loc, 1, 0.5, 1.5, 0.5, 0.02, null, true
+            );
+        }
 
         if (this.playSounds && this.getEntity().getLocation().getWorld() != null)
             this.getEntity().getLocation().getWorld().playSound(this.getEntity().getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.65f);
@@ -443,9 +469,31 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     public void load() {
         ProjectKorra.plugin.getServer().getPluginManager().registerEvents(new GuidanceListener(), ProjectKorra.plugin);
 
-        List<String> nameList = new ArrayList<>();
-        nameList.add("&aSpirit Buddy");
-        nameList.add("&aFriendly Spirit");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.DefaultActive", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName", false);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.CureRange", 8);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Sound", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Particles", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Teleport.Flash", true);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.AllowChange", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Default", 2);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Min", 1);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance.Max", 10);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Inspect.Enabled", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Inspect.Range", 64);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Blindness", false);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Darkness", false);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Boon.HeartParticles", 5);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.CureBlindness", true);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.CureDarkness", true);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.ActivationLightLevel", 5);
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Passive.EntityLightLevel", 15);
 
         List<String> adultList = new ArrayList<>();
         adultList.add("allay");
@@ -466,24 +514,19 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         babyList.add("sniffer");
         babyList.add("goat");
 
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.DefaultActive", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.ActivationLightLevel", 5);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AllowInspect", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.DisplayParticles", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityLightLevel", 15);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityNames", nameList);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.FollowDistance", 4);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.InspectRange", 64);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.PlaySounds", true);
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.RemovesBlindness", true);
-
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Description", "Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a 'Spirit Buddy' will spawn, following the player as a moving light source.");
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Instructions", "When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location.");
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn", "&aFriendly spirits are now following you");
-        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff", "&cFriendly spirits are no longer following you");
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Adult", adultList);
         ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityTypes.Baby", babyList);
+
+        List<String> nameList = new ArrayList<>();
+        nameList.add("#cab0ffSpirit Buddy");
+        nameList.add("#cab0ffFriendly Spirit");
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.EntityNames", nameList);
+
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Description", "Friendly spirits will naturally offer help to proficient airbenders. While in darkness, a 'Spirit Buddy' will spawn, following the player as a moving light source.");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.Instructions", "When in darkness, friendly spirits will automatically spawn. With this ability selected, Left Click to toggle the ability on or off. Hold Shift to move the spirit to a specific location or switch item slots to adjust the follow distance.");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOn", "&aFriendly spirits are now following you");
+        ConfigManager.defaultConfig.get().addDefault("ExtraAbilities.Cozmyc.Guidance.Language.ToggledOff", "&cFriendly spirits are no longer following you");
 
         ConfigManager.defaultConfig.save();
 
@@ -493,9 +536,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             return;
         }
 
-        registerNoCollisionTeam();
-
-        ProjectKorra.plugin.getLogger().info("Guidance by LuxaelNI and Cozmyc is now enabled!");
+        ProjectKorra.plugin.getLogger().info("Guidance " + getVersion() + " by LuxaelNI and Cozmyc is now enabled!");
 
         startGuidanceTask();
     }
@@ -512,7 +553,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.2.2";
+        return "1.3.0";
     }
 
     @SuppressWarnings("unchecked")
@@ -553,41 +594,12 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         return noError;
     }
 
-    private void registerNoCollisionTeam() {
-        ScoreboardManager scoreboardManager = Bukkit.getScoreboardManager();
-        if (scoreboardManager == null) return;
-        Scoreboard scoreboard = scoreboardManager.getMainScoreboard();
-
-        Team noCollisionTeam = scoreboard.getTeam("NoCollisionSpirits");
-        if (noCollisionTeam == null) {
-            noCollisionTeam = scoreboard.registerNewTeam("NoCollisionSpirits");
-        }
-
-        noCollisionTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
-    }
-
     public AbilityState getState() {
         return this.state;
     }
 
     public void setState(AbilityState state) {
         this.state = state;
-    }
-
-    private void addEntityToNoCollisionTeam(Entity entity) {
-        ScoreboardManager scoreboardManager = Bukkit.getScoreboardManager();
-        if (scoreboardManager == null) return;
-        Scoreboard scoreboard = scoreboardManager.getMainScoreboard();
-
-        Team noCollisionTeam = scoreboard.getTeam("NoCollisionSpirits");
-        if (noCollisionTeam == null) {
-            noCollisionTeam = scoreboard.registerNewTeam("NoCollisionSpirits");
-            noCollisionTeam.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
-        }
-
-        if (!noCollisionTeam.hasEntry(entity.getUniqueId().toString())) {
-            noCollisionTeam.addEntry(entity.getUniqueId().toString());
-        }
     }
 
     private boolean isBabySpirit(LivingEntity entity) {
@@ -597,6 +609,22 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
             }
         }
         return false;
+    }
+
+    public void startInspectCooldown() {
+        this.lastInspectCooldownStart = System.currentTimeMillis();
+    }
+
+    public boolean isInspectOnCooldown() {
+        int inspectCooldownTicks = 60;
+        return System.currentTimeMillis() - this.lastInspectCooldownStart < inspectCooldownTicks * 50L;
+    }
+
+    public static Guidance getInstanceBySpirit(LivingEntity spirit) {
+        if (spirit == null) {
+            return null;
+        }
+        return trackedEntities.get(spirit.getUniqueId());
     }
 
     public static void startGuidanceTask() {
