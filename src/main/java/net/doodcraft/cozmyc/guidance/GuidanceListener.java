@@ -55,6 +55,10 @@ public class GuidanceListener implements Listener {
                 adjustingFollowDistance.remove(player.getUniqueId());
             }
         } else {
+            if (bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance")) {
+                Guidance guidance = Guidance.getAbility(player, Guidance.class);
+                if (guidance != null) guidance.getEntity().teleport(player.getLocation());
+            }
             adjustingFollowDistance.remove(player.getUniqueId());
         }
     }
