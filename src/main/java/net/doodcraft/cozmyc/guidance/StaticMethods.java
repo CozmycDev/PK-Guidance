@@ -33,6 +33,6 @@ public class StaticMethods {
     }
 
     public static String parse(String message, Player player) {
-        return message.replaceAll("<player>", player.getName());
+        return message.replace("<player>", player.getName());
     }
 }

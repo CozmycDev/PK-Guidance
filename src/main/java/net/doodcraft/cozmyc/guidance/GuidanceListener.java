@@ -3,6 +3,7 @@ package net.doodcraft.cozmyc.guidance;
 import com.projectkorra.projectkorra.BendingPlayer;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.Ability;
+import com.projectkorra.projectkorra.ability.CoreAbility;
 import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.event.AbilityDamageEntityEvent;
@@ -40,7 +41,7 @@ import java.util.UUID;
 public class GuidanceListener implements Listener {
 
     private static final HashSet<UUID> recentlyDropped = new HashSet<>();
-    private final HashSet<UUID> adjustingFollowDistance = new HashSet<>();
+    private static final HashSet<UUID> adjustingFollowDistance = new HashSet<>();
 
     @EventHandler
     public void onPlayerToggleSneak(PlayerToggleSneakEvent event) {
@@ -49,8 +50,12 @@ public class GuidanceListener implements Listener {
         if (bPlayer == null) return;
 
         if (event.isSneaking()) {
-            if (bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance") && Guidance.getAbility(player, Guidance.class) != null && Guidance.getAbility(player, Guidance.class).allowChangeFollowDistance) {
-                adjustingFollowDistance.add(player.getUniqueId());
+            if (!bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance")) return;
+            Guidance guidance = Guidance.getAbility(player, Guidance.class);
+            if (guidance != null && guidance.canAllowChangeFollowDistance()) {
+                if (Guidance.getCurrentSpirits().containsValue(guidance.getEntity())) {
+                    adjustingFollowDistance.add(player.getUniqueId());
+                }
             } else {
                 adjustingFollowDistance.remove(player.getUniqueId());
             }
@@ -79,9 +84,10 @@ public class GuidanceListener implements Listener {
                 int newSlot = event.getNewSlot();
 
                 if (newSlot != previousSlot) {
-                    int currentDistance = Guidance.trackedFollowDistance.getOrDefault(player.getUniqueId(), guidance.followDistance);
-                    int minDistance = guidance.minFollowDistance;
-                    int maxDistance = guidance.maxFollowDistance;
+                    int currentDistance = Guidance.trackedFollowDistance.getOrDefault(player.getUniqueId(), guidance.getFollowDistance());
+                    int minDistance = guidance.getMinFollowDistance();
+                    int maxDistance = guidance.getMaxFollowDistance();
+
                     int change = calculateScrollDirection(previousSlot, newSlot);
 
                     int newDistance = currentDistance - change;
@@ -126,74 +132,74 @@ public class GuidanceListener implements Listener {
     @EventHandler
     public void onEvent(GenericGameEvent event) {
         if (event.getEntity() == null) return;
-        if (!(event.getEntity() instanceof LivingEntity)) return;
+        if (!(event.getEntity() instanceof LivingEntity livingEntity)) return;
         if (event.getEntity() instanceof Warden warden) {
             if (warden.getEntityAngryAt() == null) return;
             LivingEntity entity = warden.getEntityAngryAt();
-            if (Guidance.getSpirits().containsValue(entity)) {
+            if (Guidance.getCurrentSpirits().containsValue(entity)) {
                 warden.setAnger(entity, 0);
             }
         }
-        if (event.getLocation().getBlock().getType() == Material.SCULK_CATALYST || event.getLocation().getBlock().getType() == Material.CALIBRATED_SCULK_SENSOR) {
-            if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
-                event.setCancelled(true);
-            }
+        if ((event.getLocation().getBlock().getType() == Material.SCULK_CATALYST || event.getLocation().getBlock().getType() == Material.CALIBRATED_SCULK_SENSOR) && Guidance.getCurrentSpirits().containsValue(livingEntity)) {
+            event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onSculkEvent(BlockReceiveGameEvent event) {
-        if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
+        if (!(event.getEntity() instanceof LivingEntity livingEntity)) return;
+        if (Guidance.getCurrentSpirits().containsValue(livingEntity)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onTarget(EntityTargetEvent event) {
-        LivingEntity entity = event.getEntity() instanceof LivingEntity ? (LivingEntity) event.getEntity() : null;
-        LivingEntity target = event.getTarget() instanceof LivingEntity ? (LivingEntity) event.getTarget() : null;
+        LivingEntity entity = event.getEntity() instanceof LivingEntity e ? e : null;
+        LivingEntity target = event.getTarget() instanceof LivingEntity t ? t: null;
 
         if (entity == null && target == null) return;
 
-        if (target != null && Guidance.getSpirits().containsValue(target)) {
+        if (target != null && Guidance.getCurrentSpirits().containsValue(target)) {
             event.setCancelled(true);
         }
 
-        if (entity != null && Guidance.getSpirits().containsValue(entity)) {
+        if (entity != null && Guidance.getCurrentSpirits().containsValue(entity)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onApply(EntityPotionEffectEvent event) {
-        if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
+        if (!(event.getEntity() instanceof LivingEntity livingEntity)) return;
+        if (Guidance.getCurrentSpirits().containsValue(livingEntity)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onDeath(EntityDeathEvent event) {
-        if (Guidance.getSpirits().containsValue(event.getEntity())) {
+        if (Guidance.getCurrentSpirits().containsValue(event.getEntity())) {
+            Guidance targetGuidance = null;
             for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
-                if (!(ability instanceof Guidance guidance)) continue;
-                if (guidance.getEntity().getUniqueId().equals(event.getEntity().getUniqueId())) {
-                    guidance.remove();
-                    break;
+                if (ability instanceof Guidance guidance &&
+                        guidance.getEntity() != null &&
+                        guidance.getEntity().getUniqueId().equals(event.getEntity().getUniqueId())) {
+                    targetGuidance = guidance;
                 }
+            }
+            if (targetGuidance != null) {
+                targetGuidance.remove();
             }
         }
     }
 
     @EventHandler
     public void onTarget(EntityTargetLivingEntityEvent event) {
-        if (event.getEntity() instanceof LivingEntity) {
-            if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
+        if (event.getEntity() instanceof LivingEntity entity && Guidance.getCurrentSpirits().containsValue(entity)) {
                 event.setCancelled(true);
-            }
         }
-        if (event.getTarget() != null && Guidance.getSpirits().containsValue(event.getTarget())) {
+        if (event.getTarget() != null && Guidance.getCurrentSpirits().containsValue(event.getTarget())) {
             event.setCancelled(true);
         }
     }
@@ -201,51 +207,47 @@ public class GuidanceListener implements Listener {
     @EventHandler
     public void onDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
+        if (Guidance.getCurrentSpirits().containsValue(event.getEntity())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onDamage(EntityDamageByEntityEvent event) {
-        if (event.getDamager() instanceof LivingEntity) {
-            if (Guidance.getSpirits().containsValue((LivingEntity) event.getDamager())) {
-                event.setCancelled(true);
-            }
+        if (event.getDamager() instanceof LivingEntity entity && Guidance.getCurrentSpirits().containsValue(entity)) {
+            event.setCancelled(true);
         }
-        if (event.getEntity() instanceof LivingEntity) {
-            if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
-                event.setCancelled(true);
-            }
+        if (event.getEntity() instanceof LivingEntity entity && Guidance.getCurrentSpirits().containsValue(entity)) {
+            event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onDamage(AbilityDamageEntityEvent event) {
-        if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
+        if (!(event.getEntity() instanceof LivingEntity livingEntity)) return;
+        if (Guidance.getCurrentSpirits().containsValue(livingEntity)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onMove(AbilityVelocityAffectEntityEvent event) {
-        if (!(event.getAffected() instanceof LivingEntity)) return;
-        if (Guidance.getSpirits().containsValue((LivingEntity) event.getAffected())) {
+        if (!(event.getAffected() instanceof LivingEntity livingEntity)) return;
+        if (Guidance.getCurrentSpirits().containsValue(livingEntity)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onCombust(EntityCombustEvent event) {
-        if (!(event.getEntity() instanceof LivingEntity)) return;
-        if (Guidance.getSpirits().containsValue((LivingEntity) event.getEntity())) {
+        if (!(event.getEntity() instanceof LivingEntity livingEntity)) return;
+        if (Guidance.getCurrentSpirits().containsValue(livingEntity)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
-    public void PlayerDropItemEvent(PlayerDropItemEvent event) {
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
         recentlyDropped.add(event.getPlayer().getUniqueId());
         Bukkit.getScheduler().runTaskLater(ProjectKorra.plugin, () -> recentlyDropped.remove(event.getPlayer().getUniqueId()), 2L);
     }
@@ -266,7 +268,7 @@ public class GuidanceListener implements Listener {
 
         boolean foundGuidance = false;
 
-        for (Ability ability : ElementalAbility.getAbilitiesByInstances()) {
+        for (CoreAbility ability : ElementalAbility.getAbilitiesByInstances()) {
             if (ability.getPlayer().getUniqueId().equals(player.getUniqueId()) && ability.getName().equalsIgnoreCase("Guidance")) {
                 foundGuidance = true;
                 Guidance guidance = (Guidance) ability;
@@ -296,15 +298,13 @@ public class GuidanceListener implements Listener {
 
         Player player = event.getPlayer();
 
-        if (!Guidance.getSpirits().containsValue(clickedEntity)) return;
+        if (!Guidance.getCurrentSpirits().containsValue(clickedEntity)) return;
 
         UUID playerId = player.getUniqueId();
-        LivingEntity spirit = Guidance.getSpirits().get(playerId);
-
+        LivingEntity spirit = Guidance.getCurrentSpirits().get(playerId);
         Guidance.getInstanceBySpirit(spirit).cureBlindness();
 
-        if (spirit != null && spirit.getUniqueId().equals(spirit.getUniqueId())) {
-
+        if (spirit != null && spirit.getUniqueId().equals(Guidance.getInstanceBySpirit(spirit).getEntity().getUniqueId())) {
             spirit.getWorld().spawnParticle(
                     Particle.HEART,
                     spirit.getLocation(),

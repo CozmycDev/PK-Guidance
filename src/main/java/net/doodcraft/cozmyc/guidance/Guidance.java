@@ -6,7 +6,6 @@ import com.projectkorra.projectkorra.GeneralMethods;
 import com.projectkorra.projectkorra.ProjectKorra;
 import com.projectkorra.projectkorra.ability.AddonAbility;
 import com.projectkorra.projectkorra.ability.CoreAbility;
-import com.projectkorra.projectkorra.ability.ElementalAbility;
 import com.projectkorra.projectkorra.ability.SpiritualAbility;
 import com.projectkorra.projectkorra.configuration.ConfigManager;
 import com.projectkorra.projectkorra.region.RegionProtection;
@@ -39,19 +38,20 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public final class Guidance extends SpiritualAbility implements AddonAbility {
 
-    public static final HashMap<UUID, AbilityState> trackedStates = new HashMap<>();
-    public static final Map<UUID, Guidance> trackedEntities = new ConcurrentHashMap<>();
-    public static final HashMap<UUID, Class<? extends LivingEntity>> trackedTypes = new HashMap<>();
-    public static final HashMap<UUID, Integer> trackedFollowDistance = new HashMap<>();
-    public static final HashMap<UUID, String> trackedNames = new HashMap<>();
+    protected static final Map<UUID, AbilityState> trackedStates = new HashMap<>();
+    protected static final Map<UUID, Guidance> trackedInstances = new ConcurrentHashMap<>();
+    protected static final Map<UUID, Class<? extends LivingEntity>> trackedTypes = new HashMap<>();
+    protected static final Map<UUID, Integer> trackedFollowDistance = new HashMap<>();
+    protected static final Map<UUID, String> trackedNames = new HashMap<>();
     private static final List<Class<? extends LivingEntity>> adultSpiritClasses = new ArrayList<>();
     private static final List<Class<? extends LivingEntity>> babySpiritClasses = new ArrayList<>();
     private static final Map<UUID, LivingEntity> SPIRITS = new ConcurrentHashMap<>();
     public static int guidanceTaskId = -1;
-    public final int followDistance;
-    public final boolean allowChangeFollowDistance;
-    public final int minFollowDistance;
-    public final int maxFollowDistance;
+
+    private final int followDistance;
+    private final boolean allowChangeFollowDistance;
+    private final int minFollowDistance;
+    private final int maxFollowDistance;
     private final int activationLightLevel;
     private final boolean passivelyCuresBlindness;
     private final boolean passivelyCuresDarkness;
@@ -68,13 +68,22 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     private final int cureRange;
     private AbilityState state;
     private long lastSpawnTime;
-    private transient long lastInspectCooldownStart = 0;
+    private long lastInspectCooldownStart = 0;
 
     public Guidance(Player player) {
         super(player);
 
         boolean defaultActive = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.DefaultActive");
-        this.state = (trackedStates.get(player.getUniqueId()) == AbilityState.ACTIVE) ? AbilityState.ACTIVE : (defaultActive ? AbilityState.ACTIVE : AbilityState.INACTIVE);
+
+        AbilityState trackedState = trackedStates.get(player.getUniqueId());
+        if (trackedState == AbilityState.ACTIVE) {
+            this.state = AbilityState.ACTIVE;
+        } else if (defaultActive) {
+            this.state = AbilityState.ACTIVE;
+        } else {
+            this.state = AbilityState.INACTIVE;
+        }
+
         trackedStates.put(player.getUniqueId(), this.state);
 
         this.alwaysDisplayName = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.AlwaysDisplayName");
@@ -99,7 +108,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         this.cureBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Blindness");
         this.cureDarkness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Darkness");
-        this.cureRange = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.Boon.Cure.Range");
+        this.cureRange = ConfigManager.defaultConfig.get().getInt("ExtraAbilities.Cozmyc.Guidance.CureRange");
 
         this.passivelyCuresBlindness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Passive.CureBlindness");
         this.passivelyCuresDarkness = ConfigManager.defaultConfig.get().getBoolean("ExtraAbilities.Cozmyc.Guidance.Passive.CureDarkness");
@@ -115,7 +124,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
         if (spirit == null) {
             return null;
         }
-        return trackedEntities.get(spirit.getUniqueId());
+        return trackedInstances.get(spirit.getUniqueId());
     }
 
     public static void startGuidanceTask() {
@@ -125,55 +134,89 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         guidanceTaskId = Bukkit.getScheduler().runTaskTimer(ProjectKorra.plugin, () -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
-                BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
-                if (bPlayer == null) continue;
-
-                UUID uuid = player.getUniqueId();
-                boolean hasGuidance = ElementalAbility.getAbilitiesByInstances().stream()
-                        .anyMatch(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid));
-
-                if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
-                    if (!hasGuidance) {
-                        new Guidance(player);
-                    }
-                } else {
-                    ElementalAbility.getAbilitiesByInstances().stream()
-                            .filter(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid))
-                            .forEach(CoreAbility::remove);
-                }
+                handlePlayerGuidance(player);
             }
         }, 0L, 40L).getTaskId();
     }
 
-    public static Map<UUID, LivingEntity> getSpirits() {
+    private static void handlePlayerGuidance(Player player) {
+        BendingPlayer bPlayer = BendingPlayer.getBendingPlayer(player);
+        if (bPlayer == null) {
+            return;
+        }
+
+        UUID uuid = player.getUniqueId();
+        boolean hasGuidance = getAbilitiesByInstances().stream()
+                .anyMatch(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid));
+
+        if (bPlayer.hasSubElement(Element.SubElement.SPIRITUAL)) {
+            if (!hasGuidance) {
+                new Guidance(player);
+            }
+        } else {
+            getAbilitiesByInstances().stream()
+                    .filter(ability -> ability instanceof Guidance && ability.getPlayer().getUniqueId().equals(uuid))
+                    .forEach(CoreAbility::remove);
+        }
+    }
+
+    public static Map<UUID, LivingEntity> getCurrentSpirits() {
         return SPIRITS;
     }
 
     @Override
     public void progress() {
-        if (this.state == AbilityState.INACTIVE || this.player == null || !this.player.isOnline() || this.player.isDead() || RegionProtection.isRegionProtected(this.player, this.player.getLocation())) {
-            if (this.getEntity() != null) spiritEffects();
-            removeEntity();
+        if (!canProgress()) {
+            handleInactiveState();
             return;
         }
 
-        if (this.player.getLocation().getBlock().getLightLevel() < this.activationLightLevel) {
-            if (this.getEntity() == null) {
-                if (System.currentTimeMillis() - this.lastSpawnTime < 2000) return;
-                spawnSpirit();
-                spiritEffects();
-            }
-            emitLight();
-            updateSpirit();
-
-            if (this.passivelyCuresBlindness || this.passivelyCuresDarkness) cureBlindness();
-
-            updateSpiritLocation();
+        if (isBelowActivationLightLevel()) {
+            handleLowLightLevel();
         } else {
-            if (this.getEntity() != null) spiritEffects();
-            removeEntity();
-            this.lastSpawnTime = System.currentTimeMillis();
+            handleHighLightLevel();
         }
+    }
+
+    private boolean canProgress() {
+        return this.state != AbilityState.INACTIVE && this.player != null && this.player.isOnline() && !this.player.isDead() && !RegionProtection.isRegionProtected(this.player, this.player.getLocation());
+    }
+
+    private boolean isBelowActivationLightLevel() {
+        return this.player.getLocation().getBlock().getLightLevel() < this.activationLightLevel;
+    }
+
+    private void handleInactiveState() {
+        if (this.getEntity() != null) {
+            spiritEffects();
+        }
+        removeEntity();
+    }
+
+    private void handleLowLightLevel() {
+        if (this.getEntity() == null) {
+            if (System.currentTimeMillis() - this.lastSpawnTime < 2000) {
+                return;
+            }
+            spawnSpirit();
+            spiritEffects();
+        }
+        emitLight();
+        updateSpirit();
+
+        if (this.passivelyCuresBlindness || this.passivelyCuresDarkness) {
+            cureBlindness();
+        }
+
+        updateSpiritLocation();
+    }
+
+    private void handleHighLightLevel() {
+        if (this.getEntity() != null) {
+            spiritEffects();
+        }
+        removeEntity();
+        this.lastSpawnTime = System.currentTimeMillis();
     }
 
     @Override
@@ -326,7 +369,7 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
     @Override
     public String getVersion() {
-        return "1.3.0";
+        return "1.3.1";
     }
 
     private boolean setupEntities() {
@@ -402,26 +445,26 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         SPIRITS.put(player.getUniqueId(), entity);
         trackedTypes.put(player.getUniqueId(), entityClass);
-        trackedEntities.put(entity.getUniqueId(), this);
+        trackedInstances.put(entity.getUniqueId(), this);
     }
 
     private void updateSpirit() {
-        if (this.getEntity() instanceof Ageable && isBabySpirit(this.getEntity())) {
-            ((Ageable) this.getEntity()).setBaby();
+        if (this.getEntity() instanceof Ageable entity && isBabySpirit(entity)) {
+            entity.setBaby();
         }
 
-        if (this.getEntity() instanceof Mob && ((Mob) this.getEntity()).getTarget() != null) {
-            ((Mob) this.getEntity()).setTarget(null);
+        if (this.getEntity() instanceof Mob entity && entity.getTarget() != null) {
+            entity.setTarget(null);
         }
     }
 
     public void cureBlindness() {
         for (Entity entity : GeneralMethods.getEntitiesAroundPoint(this.getEntity().getLocation(), this.cureRange)) {
             if (entity instanceof Player p) {
-                if ((this.cureDarkness || this.passivelyCuresDarkness) && p.hasPotionEffect(PotionEffectType.DARKNESS)) {
+                if ((this.cureDarkness || this.passivelyCuresDarkness)) {
                     p.removePotionEffect(PotionEffectType.DARKNESS);
                 }
-                if ((this.cureBlindness || this.passivelyCuresBlindness) && p.hasPotionEffect(PotionEffectType.BLINDNESS)) {
+                if ((this.cureBlindness || this.passivelyCuresBlindness)) {
                     p.removePotionEffect(PotionEffectType.BLINDNESS);
                 }
             }
@@ -447,65 +490,96 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     private void updateSpiritLocation() {
         if (this.getEntity().getLocation().getWorld() == null) return;
 
-        // inspect mode
-        if (this.allowInspect && this.player.isSneaking() && this.bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance") && !isInspectOnCooldown()) {
-            Location cursor = getLookingAt(this.inspectRange);
-            if (cursor == null) return;
-
-            Location safeLocation = findSafeLocation(cursor);
-            if (safeLocation == null) return;
-
-            if (!this.getEntity().getLocation().getWorld().equals(safeLocation.getWorld()) || this.getEntity().getLocation().distance(safeLocation) >= 16) {
-                spiritEffects();
-                this.getEntity().teleport(safeLocation);
-                spiritEffects();
-            }
-
-            if (this.getEntity().getLocation().getWorld().equals(safeLocation.getWorld())) {
-                Vector dir = safeLocation.clone().subtract(this.getEntity().getLocation()).toVector();
-                Location loc = this.getEntity().getLocation();
-                loc.setDirection(dir);
-                this.getEntity().teleport(loc);
-            }
-
-            if (this.getEntity().getLocation().distance(safeLocation) > 1) {
-                Vector velocity = safeLocation.clone().toVector().subtract(this.getEntity().getLocation().toVector()).normalize();
-                this.getEntity().setVelocity(velocity);
-            }
+        if (isInspectMode()) {
+            handleInspectMode();
             return;
         }
 
-        // follow mode
-        Location cursor = getLookingAt(trackedFollowDistance.get(player.getUniqueId()));
+        handleFollowMode();
+    }
+
+    private boolean isInspectMode() {
+        return this.allowInspect && this.player.isSneaking() && this.bPlayer.getBoundAbilityName().equalsIgnoreCase("Guidance") && !isInspectOnCooldown();
+    }
+
+    private void handleInspectMode() {
+        Location cursor = getLookingAt(this.inspectRange);
         if (cursor == null) return;
 
         Location safeLocation = findSafeLocation(cursor);
         if (safeLocation == null) return;
 
+        teleportSpiritInspect(safeLocation);
+        orientSpirit(safeLocation);
+        moveSpiritInspect(safeLocation);
+    }
+
+    private void handleFollowMode() {
+        Location targetLocation = getLookingAt(trackedFollowDistance.get(player.getUniqueId()));
+        if (targetLocation == null) return;
+
+        Location safeLocation = findSafeLocation(targetLocation);
+        if (safeLocation == null) return;
+
         int currentFollowDistance = trackedFollowDistance.get(player.getUniqueId());
         double entityToPlayerDistance = this.getEntity().getLocation().distance(this.player.getLocation());
 
+        teleportSpiritFollow(safeLocation, currentFollowDistance);
+        orientSpiritToPlayer();
+        moveSpiritFollow(entityToPlayerDistance, currentFollowDistance);
+    }
+
+    private void teleportSpiritInspect(Location safeLocation) {
+        if (!this.getEntity().getLocation().getWorld().equals(safeLocation.getWorld()) || this.getEntity().getLocation().distance(safeLocation) >= 16) {
+            spiritEffects();
+            this.getEntity().teleport(safeLocation);
+            spiritEffects();
+        }
+    }
+
+    private void teleportSpiritFollow(Location safeLocation, int currentFollowDistance) {
+        double entityToPlayerDistance = this.getEntity().getLocation().distance(this.player.getLocation());
         if (!this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld()) || entityToPlayerDistance >= currentFollowDistance + maxFollowDistance) {
             spiritEffects();
             this.getEntity().teleport(safeLocation);
             spiritEffects();
-        } else {
-            if (this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld())) {
-                Vector dir = this.player.getLocation().clone().add(0, 1, 0).subtract(this.getEntity().getLocation()).toVector();
-                Location loc = this.getEntity().getLocation();
-                loc.setDirection(dir);
-                this.getEntity().teleport(loc);
-            }
+        }
+    }
 
-            if (entityToPlayerDistance < currentFollowDistance - 0.5) {
-                Vector awayVector = this.getEntity().getLocation().toVector().subtract(this.player.getLocation().clone().add(0, 1, 0).toVector()).normalize();
-                this.getEntity().setVelocity(awayVector.multiply(0.2));
-            } else if (entityToPlayerDistance > currentFollowDistance + 0.5) {
-                Vector towardsVector = this.player.getLocation().clone().add(0, 1, 0).toVector().subtract(this.getEntity().getLocation().toVector()).normalize();
-                this.getEntity().setVelocity(towardsVector.multiply(0.2));
-            } else {
-                this.getEntity().setVelocity(new Vector(0, 0, 0));
-            }
+    private void orientSpirit(Location target) {
+        if (this.getEntity().getLocation().getWorld().equals(target.getWorld())) {
+            Vector dir = target.clone().subtract(this.getEntity().getLocation()).toVector();
+            Location loc = this.getEntity().getLocation();
+            loc.setDirection(dir);
+            this.getEntity().teleport(loc);
+        }
+    }
+
+    private void orientSpiritToPlayer() {
+        if (this.getEntity().getLocation().getWorld().equals(this.player.getLocation().getWorld())) {
+            Vector dir = this.player.getLocation().clone().add(0, 1, 0).subtract(this.getEntity().getLocation()).toVector();
+            Location loc = this.getEntity().getLocation();
+            loc.setDirection(dir);
+            this.getEntity().teleport(loc);
+        }
+    }
+
+    private void moveSpiritInspect(Location safeLocation) {
+        if (this.getEntity().getLocation().distance(safeLocation) > 1) {
+            Vector velocity = safeLocation.clone().toVector().subtract(this.getEntity().getLocation().toVector()).normalize();
+            this.getEntity().setVelocity(velocity);
+        }
+    }
+
+    private void moveSpiritFollow(double entityToPlayerDistance, int currentFollowDistance) {
+        if (entityToPlayerDistance < currentFollowDistance - 0.5) {
+            Vector awayVector = this.getEntity().getLocation().toVector().subtract(this.player.getLocation().clone().add(0, 1, 0).toVector()).normalize();
+            this.getEntity().setVelocity(awayVector.multiply(0.2));
+        } else if (entityToPlayerDistance > currentFollowDistance + 0.5) {
+            Vector towardsVector = this.player.getLocation().clone().add(0, 1, 0).toVector().subtract(this.getEntity().getLocation().toVector()).normalize();
+            this.getEntity().setVelocity(towardsVector.multiply(0.2));
+        } else {
+            this.getEntity().setVelocity(new Vector(0, 0, 0));
         }
     }
 
@@ -548,12 +622,12 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
 
         entity.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, PotionEffect.INFINITE_DURATION, 0, true, true));
 
-        if (entity instanceof Ageable && isBabySpirit(this.getEntity())) {
-            ((Ageable) entity).setBaby();
+        if (entity instanceof Ageable e && isBabySpirit(this.getEntity())) {
+            e.setBaby();
         }
 
-        if (entity instanceof Slime) {
-            ((Slime) entity).setSize(0);
+        if (entity instanceof Slime e) {
+            e.setSize(0);
         }
     }
 
@@ -628,5 +702,25 @@ public final class Guidance extends SpiritualAbility implements AddonAbility {
     public boolean isInspectOnCooldown() {
         int inspectCooldownTicks = 60;
         return System.currentTimeMillis() - this.lastInspectCooldownStart < inspectCooldownTicks * 50L;
+    }
+
+    public int getFollowDistance() {
+        return this.followDistance;
+    }
+
+    public boolean canAllowChangeFollowDistance() {
+        return this.allowChangeFollowDistance;
+    }
+
+    public int getMinFollowDistance() {
+        return this.minFollowDistance;
+    }
+
+    public int getMaxFollowDistance() {
+        return this.maxFollowDistance;
+    }
+
+    public boolean isActive() {
+        return this.state == AbilityState.ACTIVE;
     }
 }
